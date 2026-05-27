@@ -1,0 +1,282 @@
+# ESP32-S3 Automated Water Top-Off System
+
+Embedded system for automated aquarium water level management. Built on Waveshare ESP32-S3-Pico with PlatformIO/Arduino framework. Features single float sensor with fixed-dose pumping algorithm and EMA rate tracking, kalkwasser scheduler (mixing + peristaltic pump), audio alerts via DFPlayer Mini, status LED, web dashboard, and encrypted credential storage in FRAM.
+
+## Hardware
+
+**Platform:** Waveshare ESP32-S3-Pico (ESP32-S3, dual-core, WiFi, 16MB flash)
+
+**Sensors and I/O:**
+- 1x main float sensor (INPUT_PULLUP, active LOW, GPIO15) — water level detection with 1s debounce
+- 1x reservoir float sensor (INPUT_PULLUP, active LOW, GPIO13) — monitors source water container level
+- 1x ATO pump relay output (active LOW, GPIO11) — controls 12V dosing pump
+- 1x mixing pump relay output (active LOW, GPIO12) — kalkwasser stirrer
+- 1x peristaltic pump driver (LEDC/STEP, GPIO18) — kalkwasser dosing via TMC2209
+- 1x status LED (GPIO16) — priority-based blink patterns (see below)
+- 1x button input (INPUT_PULLUP, active LOW, GPIO14) — short press: provisioning / hold 5s: enter provisioning mode
+
+**Audio:**
+- DFPlayer Mini (UART1 TX-only, GPIO4) — plays alert sounds and voice feedback. TX-only mode: no ACK, repeat controlled by timer.
+
+**Peripherals (I2C bus, SDA=GPIO6, SCL=GPIO7):**
+- DS3231 RTC — hardware clock with battery backup, NTP-synchronized, UTC storage; falls back to ESP32 system time if absent
+- FRAM 32KB (MB85RC256V at 0x50) — non-volatile storage for credentials (AES-256 encrypted), pump cycle history (ring buffer 60 records), EMA state, algorithm and kalkwasser config
+
+**Time management:** RTC stores UTC. Display times auto-converted to local timezone (Poland CET/CEST with automatic DST). NTP sync at boot via IP addresses (DNS-independent).
+
+## Status LED
+
+Non-blocking priority-based state machine, updated every 100ms:
+
+| Pattern | State |
+|---------|-------|
+| 3× flash 100ms, 2s pause | ERROR — intervention required |
+| Solid on | Any pump active (ATO, mixing, or peristaltic) |
+| 2× flash every 3s | Service Mode |
+| Fast 200ms blink | WiFi connecting (boot phase) |
+| Single 100ms pulse every 3s | Auto Mode, WiFi connected |
+| Pulse every 3s, every 3rd = 3× fast blink | Auto Mode, no WiFi |
+
+## Operating Modes
+
+**Service Mode** (boot default) — all pumps and scheduler suspended. Manual pump operations work normally. Auto-switches to Auto Mode after 15 minutes.
+
+**Auto Mode** — full operation: ATO algorithm active, kalkwasser scheduler running.
+
+Toggle via web dashboard or automatic 15-minute boot timer.
+
+## ATO Algorithm
+
+State machine delivering a fixed, configurable dose of water each time the float sensor detects a water level drop. A rolling EMA tracks consumption rate (ml/h) and its deviation to generate dynamic alerts.
+
+### State Flow
+
+```
+STATE_IDLE
+    |  float sensor triggers debounce
+    v
+STATE_DEBOUNCING  (1s, 5 samples)
+    |  debounce complete
+    v
+STATE_PUMPING     pump runs for: dose_ml / volumePerSecond seconds
+    |  pump stops automatically
+    v
+STATE_LOGGING     save TopOffRecord + EmaBlock to FRAM
+    |
+    v
+STATE_IDLE
+
+Any state → STATE_ERROR when:
+  - rolling 24h volume >= daily_limit_ml
+  - rate deviation >= red alert threshold (after bootstrap)
+  - reservoir sensor critical (4 consecutive low events)
+STATE_ERROR requires explicit Cycle Reset (web button)
+```
+
+### EMA Rate Tracking
+
+After each cycle:
+- **rate** [ml/h] = `dose_ml / interval_since_last_cycle × 3600`
+- **ema_rate_ml_h** — EMA of rate (alpha=0.20 default)
+- **ema_dev_ml_h** — EMA of absolute deviations — dynamic alert threshold basis
+
+Alert thresholds expressed as sigma multiples:
+```
+dev_sigma = (rate - ema_rate) / ema_dev × 100
+
+|dev_sigma| >= yellow_sigma (default 10%) → yellow warning in GUI
+|dev_sigma| >= red_sigma    (default 80%) → ERROR state (requires reset)
+```
+
+Alerts inactive during first 3 cycles (bootstrap period).
+
+## Kalkwasser Scheduler
+
+Independent scheduler running alongside the ATO algorithm.
+
+- **Mixing:** 4× daily at 00:15, 06:15, 12:15, 18:15 local time — 5 min run + 1h settle window
+- **Dosing:** 16× daily (every full hour except mix windows) — peristaltic pump via TMC2209 LEDC
+- **Concurrency:** waits up to 10 min for ATO cycle to finish; skips slot if timeout
+- **Persistence:** ON/OFF state stored in FRAM — survives restart, power cycle, and Cycle Reset
+
+## Safety
+
+- **Daily volume limit** (`daily_limit_ml`, default 2000 ml) — rolling 24h window; exceeding → ERROR
+- **Reservoir sensor** — 4 consecutive low-water events → ERROR (prevents dosing into empty reservoir)
+- **Midnight auto-restart** — firmware restarts at 00:00 local time daily; all pumps stopped safely before restart
+- **Service Mode at boot** — 15-minute grace period before auto-operation begins
+
+## Tech Stack
+
+| Component | Technology |
+|---|---|
+| Platform | PlatformIO, Arduino framework |
+| MCU | ESP32-S3 (Waveshare ESP32-S3-Pico) |
+| Web server | ESPAsyncWebServer + AsyncTCP (mathieucarbou forks) |
+| JSON | ArduinoJson 7.x |
+| RTC | RTClib (Adafruit) — DS3231 |
+| Storage | Adafruit FRAM I2C |
+| Audio | DFRobot DFPlayer Mini (TX-only, UART1) |
+| Encryption | mbedtls (AES-256-CBC, SHA-256) — bundled with ESP-IDF |
+| Auth | SHA-256 password hash, random session tokens, HttpOnly cookies |
+
+## Security
+
+**Session authentication** — Login via password (SHA-256 hashed, stored in FRAM). Sessions are token-based, bound to client IP, HttpOnly cookie, max 10 sessions / 3 per IP.
+
+**Rate limiting** — Max 5 requests/second per IP. After 10 failed login attempts, IP blocked for 60 seconds.
+
+**Credential storage** — WiFi SSID/password, admin password hash, device ID stored in FRAM encrypted with AES-256-CBC. Configured via Captive Portal.
+
+### Known Limitations
+
+- HTTP only (no TLS) — traffic visible on LAN.
+- Session tokens generated with `random()` — limited entropy on ESP32.
+- No CSRF protection on POST endpoints.
+
+## API Reference
+
+All `/api/*` endpoints require session authentication (cookie `session`). Exception: `/api/health`.
+
+### Authentication
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/login` | Authenticate (`password` form param) → set session cookie |
+| POST | `/api/logout` | Destroy session |
+
+### Status
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/status` | Full system status JSON |
+| GET | `/api/health` | Lightweight health check, no auth required |
+
+### System Control
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/system-toggle` | Toggle Auto Mode / Service Mode |
+| POST | `/api/system-reset` | Reset ATO state machine to IDLE, clear ERROR |
+
+### Pump Control
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/pump/direct-on` | Manual ATO pump on (bypasses algorithm) |
+| POST | `/api/pump/direct-off` | Stop manual ATO pump |
+| POST | `/api/pump/stop` | Emergency stop |
+| GET/POST | `/api/pump-settings` | Get/set pump calibration (`flow_rate`, `volume_per_second`) |
+
+### ATO Configuration
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/fill-water-max` | Get `dose_ml` and `daily_limit_ml` |
+| POST | `/api/set-fill-water-max` | Set daily volume limit |
+| POST | `/api/set-dose` | Set single dose volume |
+| GET | `/api/daily-volume` | Rolling 24h stats |
+| POST | `/api/reset-daily-volume` | Reset 24h counter |
+
+### History and Statistics
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/cycle-history` | Ring buffer — 60 records, newest first |
+| POST | `/api/clear-cycle-history` | Clear ring buffer |
+| GET | `/api/get-statistics` | Error counters |
+| POST | `/api/reset-statistics` | Reset error counters |
+
+### Kalkwasser
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET/POST | `/api/kalkwasser-config` | Get/set config (`enabled`, `daily_dose_ml`) |
+| POST | `/api/kalkwasser-calibrate` | Start/stop 30s calibration run |
+| POST | `/api/kalkwasser-flow-rate` | Save measured ml from calibration run |
+
+## Build and Deploy
+
+Requires [PlatformIO](https://platformio.org/).
+
+```bash
+# Build and upload
+pio run -e seeed_xiao_esp32s3 -t upload
+
+# Serial monitor (115200 baud)
+pio device monitor
+
+# Build only
+pio run -e seeed_xiao_esp32s3
+
+# Clean build
+pio run -e seeed_xiao_esp32s3 -t clean
+```
+
+## Provisioning (First-Time Setup)
+
+1. **Enter provisioning mode** — Hold button (GPIO14) for 5+ seconds during boot. Audio feedback confirms.
+
+2. **Connect to AP:**
+   - SSID: `ESP32-WATER-SETUP`
+   - Password: `setup12345`
+   - IP: `192.168.4.1` (captive portal redirects automatically)
+
+3. **Configure** — Enter device name, WiFi credentials, admin password.
+
+4. **Reboot** — ESP32 restarts in production mode, loads credentials from FRAM, connects to configured WiFi.
+
+Credentials are AES-256 encrypted before writing to FRAM. To reconfigure, repeat provisioning.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| FRAM not detected at boot | I2C wiring (SDA=GPIO6, SCL=GPIO7), 3.3V power, pull-up resistors on SDA/SCL; short circuit on I2C lines |
+| WiFi not connecting | Re-run provisioning, verify SSID/password in Captive Portal |
+| RTC battery warning | Replace CR2032 in DS3231 module |
+| Auth fails after FRAM wipe | Re-run provisioning — credentials stored only in FRAM |
+| Pump runs but no water | Check tube connections, pump direction, run calibration |
+| STATUS_LED: 3× flash pattern | ERROR state — daily limit, red alert, or empty reservoir. Resolve cause, press Cycle Reset in GUI |
+| Pump timing wrong | Calibrate: run manual pump 60s, measure ml output, set `volume_per_second = ml/60` in GUI |
+| Kalkwasser slot skipped | ATO cycle running at slot time — kalkwasser waits max 10 min; reduce ATO dose or adjust schedule |
+
+## Source Structure
+
+```
+src/
+  main.cpp                  Entry point, mode detection, main loop
+  algorithm/
+    water_algorithm.*       ATO state machine, EMA tracking
+    kalkwasser_scheduler.*  Mixing + peristaltic pump scheduler
+    algorithm_config.h      Constants, data structures (TopOffRecord, EmaBlock, TopOffConfig)
+  config/                   Settings, system enable/disable, FRAM credential loading
+  core/                     Logging utilities
+  crypto/                   AES-256 encryption for FRAM credentials
+  hardware/
+    fram_controller.*       FRAM memory management, ring buffer, all persistent data
+    hardware_pins.h         GPIO pin definitions
+    pump_controller.*       ATO pump relay control
+    mixing_pump.*           Mixing pump relay control
+    peristaltic_pump.*      Peristaltic pump via TMC2209 LEDC
+    rtc_controller.*        DS3231 RTC + NTP sync + internal fallback
+    water_sensors.*         Float sensor debouncing
+    audio_player.*          DFPlayer Mini TX-only audio
+    status_led.*            Priority-based status LED patterns
+  network/                  WiFi manager
+  provisioning/             Captive portal: AP, web server, button detection
+  security/                 Auth manager, session manager, rate limiter
+  web/                      Production web server, API handlers, HTML dashboard
+```
+
+## FRAM Memory Layout
+
+```
+0x0000–0x0017   Magic number and firmware version
+0x0018–0x0417   Encrypted credentials (WiFi, admin password hash, device ID)
+0x0500+         Water system data:
+  0x0560–0x0575   TopOffConfig (20 bytes + 2B checksum, magic 0xA7)
+  0x0580–0x0591   EmaBlock (16 bytes + 2B checksum)
+  0x0610–0x0AC0   Ring buffer (60 × TopOffRecord, 20 bytes each)
+  0x0AC0–0x0AD5   KalkwasserConfig (20 bytes + 2B checksum, magic 0xCA)
+```

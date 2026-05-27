@@ -1,0 +1,5 @@
+build/
+.pio/
+node_modules/
+*.bin
+*.elf

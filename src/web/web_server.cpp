@@ -1,0 +1,130 @@
+
+#include "web_server.h"
+#include "web_handlers.h"
+#include "../security/session_manager.h"
+#include "../security/rate_limiter.h"
+#include "../security/auth_manager.h"
+#include "../config/credentials_manager.h"
+#include "../core/logging.h"
+
+AsyncWebServer server(80);
+
+void initWebServer() {
+    // Static pages
+    server.on("/", HTTP_GET, handleDashboard);
+    server.on("/login", HTTP_GET, handleLoginPage);
+    
+    // Authentication
+    server.on("/api/login", HTTP_POST, handleLogin);
+    server.on("/api/logout", HTTP_POST, handleLogout);
+    
+    // API endpoints
+    server.on("/api/status", HTTP_GET, handleStatus);
+    server.on("/api/pump/direct-on", HTTP_POST, handleDirectPumpOn);
+    server.on("/api/pump/direct-off", HTTP_POST, handleDirectPumpOff);
+    server.on("/api/pump/calibration-on", HTTP_POST, handleCalibrationOn);
+    server.on("/api/pump/calibration-off", HTTP_POST, handleCalibrationOff);
+    server.on("/api/pump/stop", HTTP_POST, handlePumpStop);
+    server.on("/api/pump-settings", HTTP_GET | HTTP_POST, handlePumpSettings);
+    
+    server.on("/api/system-toggle", HTTP_GET | HTTP_POST, handleSystemToggle);
+    
+    // Statistics endpoints
+    server.on("/api/reset-statistics", HTTP_POST, handleResetStatistics);
+    server.on("/api/get-statistics", HTTP_GET, handleGetStatistics);
+
+    server.on("/api/daily-volume", HTTP_GET, handleGetDailyVolume);
+    server.on("/api/reset-daily-volume", HTTP_POST, handleResetDailyVolume);
+
+    // Fill Water Max / Dose endpoints
+    server.on("/api/fill-water-max", HTTP_GET, handleGetFillWaterMax);
+    server.on("/api/set-fill-water-max", HTTP_POST, handleSetFillWaterMax);  // daily_limit_ml
+    server.on("/api/set-dose", HTTP_POST, handleSetDose);                    // dose_ml
+
+    // Cycle History endpoints
+    server.on("/api/cycle-history",       HTTP_GET,  handleGetCycleHistory);
+    server.on("/api/clear-cycle-history", HTTP_POST, handleClearCycleHistory);
+
+    // Kalkwasser endpoints
+    server.on("/api/kalkwasser-config",     HTTP_GET | HTTP_POST, handleKalkwasserConfig);
+    server.on("/api/kalkwasser-calibrate",  HTTP_POST,            handleKalkwasserCalibrate);
+    server.on("/api/kalkwasser-flow-rate",  HTTP_POST,            handleKalkwasserFlowRate);
+    server.on("/api/mixing-pump",           HTTP_POST,            handleMixingPumpDirect);
+    server.on("/api/peristaltic-pump",      HTTP_POST,            handlePeristalticPumpDirect);
+
+    // System reset
+    server.on("/api/system-reset", HTTP_POST, handleSystemReset);
+
+    // Alarm audio mute toggle + volume
+    server.on("/api/alarm-toggle", HTTP_GET | HTTP_POST, handleAlarmToggle);
+    server.on("/api/audio-volume", HTTP_GET | HTTP_POST, handleAudioVolume);
+
+    // Algorithm config (EMA alpha/clamp, P1/P2, zone thresholds, initial EMA)
+    server.on("/api/alg-config", HTTP_GET | HTTP_POST, handleAlgConfig);
+
+    // Health check endpoint (no session required)
+    server.on("/api/health", HTTP_GET, handleHealth);
+
+    // 404 handler - also enforce whitelist
+    server.onNotFound([](AsyncWebServerRequest* request) {
+        IPAddress clientIP = request->client()->remoteIP();
+        if (!isTrustedProxy(clientIP) && !isIPAllowed(clientIP)) {
+            request->send(403, "text/plain", "Forbidden");
+            return;
+        }
+        request->send(404, "text/plain", "Not Found");
+    });
+    
+    server.begin();
+    LOG_INFO("");
+    LOG_INFO("Web server started on port 80");
+}
+
+bool checkAuthentication(AsyncWebServerRequest* request) {
+    IPAddress clientIP = request->client()->remoteIP();
+    
+    // ============== TRUSTED PROXY CHECK ==============
+    // WireGuard cryptographically authenticates the VPS — IP check is sufficient
+    if (isTrustedProxy(clientIP)) {
+        return true;
+    }
+    
+    // ============== WHITELIST CHECK ==============
+    // Only whitelisted IPs can access the system
+    if (!isIPAllowed(clientIP)) {
+        LOG_WARNING("IP %s not on whitelist - access denied", clientIP.toString().c_str());
+        return false;
+    }
+
+    // Check if IP is blocked
+    if (isIPBlocked(clientIP)) {
+        return false;
+    }
+    
+    // Check rate limiting
+    if (isRateLimited(clientIP)) {
+        recordFailedAttempt(clientIP);
+        return false;
+    }
+    
+    recordRequest(clientIP);
+    
+    // Check session cookie
+    if (request->hasHeader("Cookie")) {
+        String cookie = request->getHeader("Cookie")->value();
+        int tokenStart = cookie.indexOf("session_token=");
+        if (tokenStart != -1) {
+            tokenStart += 14;
+            int tokenEnd = cookie.indexOf(";", tokenStart);
+            if (tokenEnd == -1) tokenEnd = cookie.length();
+            
+            String token = cookie.substring(tokenStart, tokenEnd);
+            if (validateSession(token, clientIP)) {
+                return true;
+            }
+        }
+    }
+    
+    recordFailedAttempt(clientIP);
+    return false;
+}

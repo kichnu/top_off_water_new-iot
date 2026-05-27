@@ -1,0 +1,85 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Sim: fetch from device",
+            "type": "shell",
+            "command": "python docs/inject_scenario.py --host ${input:deviceHost} --password ${input:devicePassword}",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "group": "test"
+        },
+        {
+            "label": "Sim: run last generated",
+            "type": "shell",
+            "command": "python $(ls -t tests/sim_*.py | head -1)",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Sim: fetch + run (device)",
+            "type": "shell",
+            "command": "python docs/inject_scenario.py --host ${input:deviceHost} --password ${input:devicePassword} && python $(ls -t tests/sim_*.py | head -1)",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "group": "test"
+        },
+        {
+            "label": "Sim: fetch + run (load JSON)",
+            "type": "shell",
+            "command": "python docs/inject_scenario.py --load ${input:snapshotFile} && python $(ls -t tests/sim_*.py | head -1)",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "group": "test"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "deviceHost",
+            "type": "promptString",
+            "description": "Device IP address",
+            "default": "192.168.10.2"
+        },
+        {
+            "id": "devicePassword",
+            "type": "promptString",
+            "description": "Admin password",
+            "password": true
+        },
+        
+        {
+            "id": "snapshotFile",
+            "type": "promptString",
+            "description": "Path to saved JSON snapshot",
+            "default": "snapshot.json"
+        }
+    ]
+}

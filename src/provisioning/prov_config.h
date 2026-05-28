@@ -8,12 +8,9 @@
 // ===============================
 
 // Button Configuration
-#define PROV_BUTTON_PIN         14       // GPIO5 (same as RESET_PIN)
-#define PROV_BUTTON_HOLD_MS     5000    // Hold time to enter provisioning (5 seconds)
-#define PROV_BUTTON_DEBOUNCE_MS 100     // Debounce time
-
-// Audio feedback during button hold (DFPlayer Pro)
-#define PROV_AUDIO_TRACK        6       // 006.mp3 — odliczanie + "system gotowy do konfiguracji"
+#define PROV_BUTTON_PIN         RESET_PIN  // GPIO2 (same as RESET_PIN in hardware_pins.h)
+#define PROV_BUTTON_HOLD_MS     5000       // Hold time to enter provisioning (5 seconds)
+#define PROV_BUTTON_DEBOUNCE_MS 100        // Debounce time
 
 // Access Point Configuration
 #define PROV_AP_SSID            "ESP32-WATER-SETUP"

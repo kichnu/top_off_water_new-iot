@@ -46,24 +46,11 @@ void handleSetDose(AsyncWebServerRequest* request);          // sets dose_ml
 void handleGetCycleHistory(AsyncWebServerRequest* request);
 void handleClearCycleHistory(AsyncWebServerRequest* request);
 
-// Kalkwasser endpoints
-void handleKalkwasserConfig(AsyncWebServerRequest* request);
-void handleKalkwasserCalibrate(AsyncWebServerRequest* request);
-void handleKalkwasserFlowRate(AsyncWebServerRequest* request);
-void handleMixingPumpDirect(AsyncWebServerRequest* request);
-void handlePeristalticPumpDirect(AsyncWebServerRequest* request);
-
 // System reset (works from any state except LOGGING)
 void handleSystemReset(AsyncWebServerRequest *request);
 
-// Alarm audio mute toggle
-void handleAlarmToggle(AsyncWebServerRequest *request);
-
 // Algorithm config (GET = current, POST = save all 7 params)
 void handleAlgConfig(AsyncWebServerRequest *request);
-
-// Alarm volume control (GET = current, POST ?volume=3-30)
-void handleAudioVolume(AsyncWebServerRequest *request);
 
 // Health check endpoint (no session required)
 void handleHealth(AsyncWebServerRequest *request);

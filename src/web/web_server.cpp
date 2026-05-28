@@ -45,19 +45,8 @@ void initWebServer() {
     server.on("/api/cycle-history",       HTTP_GET,  handleGetCycleHistory);
     server.on("/api/clear-cycle-history", HTTP_POST, handleClearCycleHistory);
 
-    // Kalkwasser endpoints
-    server.on("/api/kalkwasser-config",     HTTP_GET | HTTP_POST, handleKalkwasserConfig);
-    server.on("/api/kalkwasser-calibrate",  HTTP_POST,            handleKalkwasserCalibrate);
-    server.on("/api/kalkwasser-flow-rate",  HTTP_POST,            handleKalkwasserFlowRate);
-    server.on("/api/mixing-pump",           HTTP_POST,            handleMixingPumpDirect);
-    server.on("/api/peristaltic-pump",      HTTP_POST,            handlePeristalticPumpDirect);
-
     // System reset
     server.on("/api/system-reset", HTTP_POST, handleSystemReset);
-
-    // Alarm audio mute toggle + volume
-    server.on("/api/alarm-toggle", HTTP_GET | HTTP_POST, handleAlarmToggle);
-    server.on("/api/audio-volume", HTTP_GET | HTTP_POST, handleAudioVolume);
 
     // Algorithm config (EMA alpha/clamp, P1/P2, zone thresholds, initial EMA)
     server.on("/api/alg-config", HTTP_GET | HTTP_POST, handleAlgConfig);

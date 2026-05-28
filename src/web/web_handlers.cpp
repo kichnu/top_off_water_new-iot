@@ -15,10 +15,6 @@
 #include <ArduinoJson.h>
 #include "../config/credentials_manager.h"
 #include "../algorithm/water_algorithm.h"
-#include "../algorithm/kalkwasser_scheduler.h"
-#include "../hardware/peristaltic_pump.h"
-#include "../hardware/mixing_pump.h"
-#include "../hardware/audio_player.h"
 
 void handleDashboard(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
@@ -169,24 +165,12 @@ void handleStatus(AsyncWebServerRequest* request) {
     json["uptime"] = millis();
 
     // ============================================
-    // KALKWASSER STATUS
+    // SENSOR STATUS
     // ============================================
     json["low_reservoir_count"]   = waterAlgorithm.getLowReservoirCount();
     json["low_reservoir_warning"] = waterAlgorithm.isLowReservoirWarning();
     json["low_reservoir_error"]   = (waterAlgorithm.getLastError() == ERROR_LOW_RESERVOIR);
-
-    json["kalk_state"]              = kalkwasserScheduler.getStateString();
-    json["kalk_enabled"]            = kalkwasserScheduler.isEnabled();
-    json["kalk_last_mix_ts"]        = kalkwasserScheduler.getLastMixTs();
-    json["kalk_last_dose_ts"]       = kalkwasserScheduler.getLastDoseTs();
-    json["kalk_mix_done_bits"]      = kalkwasserScheduler.getMixDoneBits();
-    json["kalk_dose_done_bits"]     = kalkwasserScheduler.getDoseDoneBits();
-    json["kalk_alarm"]              = kalkwasserScheduler.isNoTopoffAlarm();
-    json["audio_muted"]             = audioPlayer.isMuted();
-    json["audio_volume"]            = audioPlayer.getVolume();
-    json["mixing_pump_active"]      = isMixingPumpActive();
-    json["peristaltic_pump_active"] = isPeristalticPumpRunning();
-    json["rtc_ts"]                  = (uint32_t)getUnixTimestamp();
+    json["rtc_ts"]                = (uint32_t)getUnixTimestamp();
 
     // ============================================
     // ALARM SCORE
@@ -655,93 +639,6 @@ void handleClearCycleHistory(AsyncWebServerRequest* request) {
 }
 
 // ===============================
-// KALKWASSER HANDLERS
-// ===============================
-
-void handleKalkwasserConfig(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-    if (request->method() == HTTP_GET) {
-        JsonDocument doc;
-        doc["success"]            = true;
-        doc["enabled"]            = kalkwasserScheduler.isEnabled();
-        doc["daily_dose_ml"]      = kalkwasserScheduler.getDailyDoseMl();
-        doc["flow_rate_ul_per_s"] = kalkwasserScheduler.getFlowRateUlPerS();
-        doc["flow_rate_ml_s"]     = (float)kalkwasserScheduler.getFlowRateUlPerS() / 1000.0f;
-        doc["dose_duration_s"]    = kalkwasserScheduler.getDoseDurationS();
-        doc["next_mix_ts"]        = kalkwasserScheduler.getNextMixTs();
-        doc["next_dose_ts"]       = kalkwasserScheduler.getNextDoseTs();
-        doc["kalk_state"]         = kalkwasserScheduler.getStateString();
-        String resp; serializeJson(doc, resp);
-        request->send(200, "application/json", resp);
-    } else {
-        bool en = kalkwasserScheduler.isEnabled();
-        uint16_t dose_ml = kalkwasserScheduler.getDailyDoseMl();
-        if (request->hasParam("enabled", true))
-            en = request->getParam("enabled", true)->value().toInt() != 0;
-        if (request->hasParam("daily_dose_ml", true))
-            dose_ml = (uint16_t)request->getParam("daily_dose_ml", true)->value().toInt();
-        if (dose_ml > 5000) {
-            request->send(400, "application/json", "{\"success\":false,\"error\":\"dose_ml max 5000\"}");
-            return;
-        }
-        kalkwasserScheduler.setConfig(en, dose_ml);
-        JsonDocument doc;
-        doc["success"]       = true;
-        doc["enabled"]       = en;
-        doc["daily_dose_ml"] = dose_ml;
-        String resp; serializeJson(doc, resp);
-        request->send(200, "application/json", resp);
-    }
-}
-
-void handleKalkwasserCalibrate(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-    bool ok = kalkwasserScheduler.startCalibration();
-    if (ok) {
-        request->send(200, "application/json", "{\"success\":true,\"duration_s\":30}");
-    } else {
-        const char* reason = waterAlgorithm.isInCycle()
-            ? "Top-off cycle in progress"
-            : "Scheduler not idle";
-        JsonDocument doc;
-        doc["success"] = false;
-        doc["error"]   = reason;
-        String resp; serializeJson(doc, resp);
-        request->send(409, "application/json", resp);
-    }
-}
-
-void handleKalkwasserFlowRate(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-    if (!request->hasParam("measured_ml", true)) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing measured_ml\"}");
-        return;
-    }
-    float ml = request->getParam("measured_ml", true)->value().toFloat();
-    if (!kalkwasserScheduler.setFlowRate(ml)) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"Value out of range (0.1-500 ml)\"}");
-        return;
-    }
-    JsonDocument doc;
-    doc["success"]         = true;
-    doc["measured_ml"]     = ml;
-    doc["flow_rate_ul_s"]  = kalkwasserScheduler.getFlowRateUlPerS();
-    doc["flow_rate_ml_s"]  = kalkwasserScheduler.getFlowRateMlPerS();
-    doc["dose_duration_s"] = kalkwasserScheduler.getDoseDurationS();
-    String resp; serializeJson(doc, resp);
-    request->send(200, "application/json", resp);
-}
-
-// ===============================
 // SYSTEM RESET HANDLER
 // ===============================
 
@@ -764,72 +661,6 @@ void handleSystemReset(AsyncWebServerRequest* request) {
 }
 
 // ===============================
-// DIRECT MIXING PUMP CONTROL
-// ===============================
-
-void handleMixingPumpDirect(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-    if (!request->hasParam("action", true)) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing action\"}");
-        return;
-    }
-    String action = request->getParam("action", true)->value();
-    bool active;
-    if (action == "on") {
-        bool ok = kalkwasserScheduler.directMixOn();
-        if (!ok) {
-            request->send(409, "application/json", "{\"success\":false,\"error\":\"Scheduler not idle\"}");
-            return;
-        }
-        active = true;
-    } else {
-        kalkwasserScheduler.directMixOff();
-        active = false;
-    }
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["active"]  = active;
-    String resp; serializeJson(doc, resp);
-    request->send(200, "application/json", resp);
-}
-
-// ===============================
-// DIRECT PERISTALTIC PUMP CONTROL
-// ===============================
-
-void handlePeristalticPumpDirect(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-    if (!request->hasParam("action", true)) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing action\"}");
-        return;
-    }
-    String action = request->getParam("action", true)->value();
-    bool active;
-    if (action == "on") {
-        bool ok = kalkwasserScheduler.directDoseOn();
-        if (!ok) {
-            request->send(409, "application/json", "{\"success\":false,\"error\":\"Scheduler not idle\"}");
-            return;
-        }
-        active = true;
-    } else {
-        kalkwasserScheduler.directDoseOff();
-        active = false;
-    }
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["active"]  = active;
-    String resp; serializeJson(doc, resp);
-    request->send(200, "application/json", resp);
-}
-
-// ===============================
 // HEALTH CHECK HANDLER
 // ===============================
 
@@ -847,49 +678,6 @@ void handleHealth(AsyncWebServerRequest *request) {
     json += "}";
 
     request->send(200, "application/json", json);
-}
-
-// ===============================
-// ALARM AUDIO MUTE TOGGLE
-// GET  → zwraca stan wyciszenia
-// POST → przełącza mute (toggle)
-// ===============================
-
-void handleAudioVolume(AsyncWebServerRequest *request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-
-    if (request->method() == HTTP_GET) {
-        JsonDocument json;
-        json["success"] = true;
-        json["volume"]  = audioPlayer.getVolume();
-        String response;
-        serializeJson(json, response);
-        request->send(200, "application/json", response);
-
-    } else if (request->method() == HTTP_POST) {
-        if (!request->hasParam("volume", true)) {
-            request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing volume\"}");
-            return;
-        }
-        int v = request->getParam("volume", true)->value().toInt();
-        if (v < AUDIO_VOLUME_MIN || v > AUDIO_VOLUME_MAX || v % 5 != 0) {
-            request->send(400, "application/json", "{\"success\":false,\"error\":\"Volume must be 5/10/15/20/25/30\"}");
-            return;
-        }
-        audioPlayer.setVolume((uint8_t)v);
-
-        JsonDocument json;
-        json["success"] = true;
-        json["volume"]  = audioPlayer.getVolume();
-        String response;
-        serializeJson(json, response);
-        request->send(200, "application/json", response);
-
-        LOG_INFO("Audio volume set to %d via web interface", audioPlayer.getVolume());
-    }
 }
 
 // ===============================
@@ -989,31 +777,3 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     request->send(200, "application/json", resp);
 }
 
-void handleAlarmToggle(AsyncWebServerRequest *request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-
-    if (request->method() == HTTP_GET) {
-        JsonDocument json;
-        json["success"] = true;
-        json["muted"]   = audioPlayer.isMuted();
-        String response;
-        serializeJson(json, response);
-        request->send(200, "application/json", response);
-
-    } else if (request->method() == HTTP_POST) {
-        bool newMuted = !audioPlayer.isMuted();
-        audioPlayer.setMuted(newMuted);
-
-        JsonDocument json;
-        json["success"] = true;
-        json["muted"]   = newMuted;
-        String response;
-        serializeJson(json, response);
-        request->send(200, "application/json", response);
-
-        LOG_INFO("Alarm audio %s via web interface", newMuted ? "MUTED" : "UNMUTED");
-    }
-}

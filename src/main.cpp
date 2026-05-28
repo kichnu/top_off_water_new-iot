@@ -15,10 +15,6 @@
 #include "security/rate_limiter.h"
 #include "web/web_server.h"
 #include "algorithm/water_algorithm.h"
-#include "algorithm/kalkwasser_scheduler.h"
-#include "hardware/mixing_pump.h"
-#include "hardware/peristaltic_pump.h"
-#include "hardware/audio_player.h"
 #include "hardware/status_led.h"
 #include "provisioning/prov_detector.h"
 #include "provisioning/ap_core.h"
@@ -115,18 +111,13 @@ void setup() {
     initNVS();          // initNVS() wywołuje initFRAM() wewnętrznie (config.cpp)
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
-    // ESP32-S3 new I2C driver enters INVALID_STATE after bursts of ring-buffer reads.
-    // Full bus reset + re-register FRAM so subsequent reads (kalk, audio, credentials, RTC) are clean.
+    // I2C bus reset after burst ring-buffer reads — ensures clean state for credentials and RTC.
     Wire.end();
     delay(10);
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
     Wire.setClock(100000);
     delay(10);
     framReconnect();
-    initMixingPump();
-    initPeristalticPump();
-    audioPlayer.init();
-    kalkwasserScheduler.init();
 
     bool credentials_loaded = initCredentialsManager();
     LOG_INFO("");
@@ -217,10 +208,7 @@ void loop() {
         if (nowTs >= g_restartAtTs) {
             Serial.println("=== DAILY RESTART: midnight reached ===");
 
-            if (isPumpActive())              stopPump();
-            if (isMixingPumpActive())        stopMixingPump();
-            if (isPeristalticPumpRunning())  stopPeristalticPump();
-            audioPlayer.stop();
+            if (isPumpActive()) stopPump();
             delay(1000);
 
             Serial.println("System restarting in 3 seconds...");
@@ -232,13 +220,10 @@ void loop() {
     // Sensor + algorytm — każdy cykl loop
     updateWaterSensor();
     waterAlgorithm.update();
-    kalkwasserScheduler.update();
-
     // Pozostałe systemy co 100 ms
     if (now - lastUpdate >= 100) {
         updatePumpController();
         updateStatusLed();
-        audioPlayer.update();
         updateSessionManager();
         updateRateLimiter();
         updateWiFi();

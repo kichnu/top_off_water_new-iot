@@ -12,7 +12,7 @@ const char* LOGIN_HTML = R"rawliteral(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATO & Kalkwasser Dosing - Login</title>
+    <title>ATO Water System - Login</title>
     <style>
         :root {
             --bg-primary: #0a0f1a;
@@ -240,7 +240,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATO & Kalkwasser Dosing</title>
+    <title>ATO Water System</title>
     <style>
         :root {
             --bg-primary: #0a0f1a;
@@ -471,21 +471,11 @@ const char* DASHBOARD_HTML = R"rawliteral(
         @media (max-width: 480px) {
             .pump-controls { grid-template-columns: repeat(2, 1fr); }
         }
-        .btn-kalk-off {
-            background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.3);
-            color: var(--accent-yellow);
-        }
-        .btn-kalk-off:hover:not(:disabled) { background: rgba(234,179,8,0.18); }
         .btn-service {
             background: rgba(249,115,22,0.10); border: 1px solid rgba(249,115,22,0.35);
             color: #f97316;
         }
         .btn-service:hover:not(:disabled) { background: rgba(249,115,22,0.20); }
-        .btn-kalk-on {
-            background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3);
-            color: var(--accent-green);
-        }
-        .btn-kalk-on:hover:not(:disabled) { background: rgba(34,197,94,0.25); }
 
         .btn {
             display: flex;
@@ -763,51 +753,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             color: var(--text-muted);
         }
 
-        /* Kalkwasser schedule tiles */
-        .kalk-schedule-wrap {
-            margin-bottom: 20px; 
-        }
-        .kalk-section {
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 12px;
-            margin-top: 10px;
-        }
-        .kalk-section-label {
-            font-size: 0.7rem; font-weight: 600; color: var(--text-primary);
-            text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;
-        }
-        .kalk-mix-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
-        }
-        .kalk-dose-grid {
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            gap: 6px;
-        }
-        @media (max-width: 640px) {
-            .kalk-dose-grid { grid-template-columns: repeat(4, 1fr); }
-        }
-        .kalk-tile {
-            background: var(--bg-primary); border: 1px solid var(--border);
-            border-radius: 6px; padding: 8px 4px; font-size: 0.78rem;
-            font-family: 'Courier New', monospace; font-weight: 600;
-            color: var(--text-secondary); cursor: default;
-            text-align: center; transition: background 0.2s, color 0.2s;
-        }
-        .kalk-tile.kalk-ev-done    { background: rgba(74,222,128,0.1); border-color: rgba(74,222,128,0.3); color: #4ade80; }
-        .kalk-tile.kalk-ev-active  { background: rgba(251,191,36,0.15); border-color: rgba(251,191,36,0.45); color: #fbbf24; font-weight: 700; }
-        .kalk-tile.kalk-ev-pending { color: var(--text-secondary); }
-        .kalk-tile.kalk-ev-missed  { color: rgba(248,113,113,0.45); border-color: rgba(248,113,113,0.15); }
-        .kalk-alarm-banner {
-            background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
-            color: #f87171; border-radius: 6px; padding: 8px 12px;
-            font-size: 0.8rem; font-weight: 600; margin-top: 10px; display: none;
-        }
-
         .card-subheader {
             font-size: 0.9rem; font-weight: 600; color: var(--text-primary);
             padding: 12px 0 4px; border-top: 1px solid var(--border); margin-top: 12px;
@@ -823,7 +768,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 <div class="logo-icon">
                     <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
                 </div>
-                <h1>ATO & Kalkwasser Dosing</h1>
+                <h1>ATO Water System</h1>
             </div>
             <button class="btn-back" onclick="logout()">Back</button>
         </header>
@@ -844,10 +789,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         <span id="sensor1Badge" class="sub-off">Sensors: OFF</span>
                         <span class="sub-sep">•</span>
                         <span id="pumpBadge" class="sub-off">Pump: OFF</span>
-                        <span class="sub-sep">•</span>
-                        <span id="kalkPumpBadge" class="sub-off">Kalk Pump: OFF</span>
-                        <span class="sub-sep">•</span>
-                        <span id="mixingPumpBadge" class="sub-off">Mix Pump: OFF</span>
                         <span class="sub-sep" id="reservoirSep" style="display:none">•</span>
                         <span id="reservoirAlarmBadge" style="display:none"></span>
                     </div>
@@ -864,42 +805,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 <span class="si-sep">•</span>
                 <span id="uptime">—</span>
             </div>
-            <!-- Kalkwasser schedule (tile grid) -->
-            <div class="kalk-schedule-wrap" id="kalkScheduleWrap">
-                <div class="kalk-alarm-banner" id="kalkAlarmBanner">
-                    &#9888; No top-off events in last 24h — kalkwasser dose may be too high!
-                </div>
-                <div class="kalk-section">
-                    <div class="kalk-section-label">Kalkwasser Mixing schedule</div>
-                    <div class="kalk-mix-grid">
-                        <div class="kalk-tile kalk-ev-pending" id="kalkMix0">00:15</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkMix1">06:15</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkMix2">12:15</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkMix3">18:15</div>
-                    </div>
-                </div>
-                <div class="kalk-section">
-                    <div class="kalk-section-label">Kalkwasser Dosing schedule</div>
-                    <div class="kalk-dose-grid">
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose0">02:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose1">03:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose2">04:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose3">05:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose4">08:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose5">09:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose6">10:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose7">11:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose8">14:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose9">15:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose10">16:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose11">17:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose12">20:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose13">21:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose14">22:00</div>
-                        <div class="kalk-tile kalk-ev-pending" id="kalkDose15">23:00</div>
-                    </div>
-                </div>
-            </div>
             </div>
 
         <!-- SECOND CARD: Pump Control -->
@@ -913,13 +818,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
             <div class="pump-controls">
                 <button id="systemToggleBtn" class="btn btn-service" onclick="toggleSystem()">Service Mode</button>
-                <button id="kalkwasserBtn" class="btn btn-kalk-off" onclick="toggleKalkwasser()">Kalkwasser OFF</button>
-                <button id="alarmBtn" class="btn btn-kalk-on" onclick="toggleAlarm()">Alert Sound ON</button>
                 <button id="manualPumpBtn" class="btn btn-off" onclick="toggleManualPump()">Pump OFF</button>
-                <button id="mixingPumpBtn" class="btn btn-off" onclick="toggleMixingPump()">Mixing Pump OFF</button>
-                <button id="peristalticPumpBtn" class="btn btn-off" onclick="togglePeristalticPump()">Peristaltic OFF</button>
                 <button id="systemResetBtn" class="btn btn-control" onclick="systemReset()">Cycle Reset</button>
-                <button id="volBtn" class="btn btn-control" onclick="handleVolBtnClick(event)" title="lewa 30% = ciszej, prawa 30% = głośniej" style="display:flex;align-items:center;padding-left:0;padding-right:0;gap:0;"><span style="flex:0 0 30%;text-align:center;">&#8722;</span><span id="volCenterLabel" style="flex:1;text-align:center;">Vol 3/5</span><span style="flex:0 0 30%;text-align:center;">+</span></button>
             </div>
         </div>
 
@@ -936,18 +836,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
             <div class="stats-columns">
 
-                <!-- Column 1: Kalkwasser Dosing Settings -->
-                <div class="stat-column">
-                    <h3>Kalkwasser Dosing - Current Value</h3>
-                    <div class="input-group" style="margin-top: 8px;">
-                        <input type="number" id="kalkDailyDose" min="1" max="5000" step="1" placeholder="ml/day">
-                    </div>
-                    <div class="stat-daily">
-                        <button class="btn btn-secondary btn-small" onclick="saveKalkConfig()">Save</button>
-                    </div>
-                </div>
-
-                <!-- Column 2: Single Dose -->
+                <!-- Single Dose -->
                 <div class="stat-column stat-col-dose">
                     <h3>Single Dose - Current Value</h3>
                     <div class="input-group" style="margin-top: 8px;">
@@ -1064,25 +953,11 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 </div>
             </div>
 
-            <div class="card-subheader">Kalkwasser Pump Calibration</div>
-            <div class="settings-row">
-                <div class="setting-item">
-                    <button id="kalkCalibBtn" class="btn btn-off" onclick="toggleKalkCalibration()">Calibration OFF</button>
-                </div>
-                <div class="setting-item input-group">
-                    <label for="kalkMeasuredMl" style="text-align: center;">Mililiters per 30 Seconds)</label>
-                    <input type="number" id="kalkMeasuredMl" min="0.1" max="500" step="0.1" placeholder="15.3">
-                </div>
-                <div class="setting-item">
-                    <button class="btn btn-primary" onclick="saveKalkFlowRate()">Save Result</button>
-                </div>
-            </div>
-
         </div>
 
         <!-- Footer -->
         <div class="footer-info">
-            ATO & Kalkwasser Dosing• v3.0
+            ATO Water System • v3.0
         </div>
     </div>
 
@@ -1103,8 +978,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             pollingIntervals.forEach(id => clearInterval(id));
             pollingIntervals = [];
             if (pumpCountdownTimer) { clearInterval(pumpCountdownTimer); pumpCountdownTimer = null; }
-            if (mixingCountdownTimer) { clearInterval(mixingCountdownTimer); mixingCountdownTimer = null; }
-            if (peristalticCountdownTimer) { clearInterval(peristalticCountdownTimer); peristalticCountdownTimer = null; }
 
             // Show overlay
             const overlay = document.createElement('div');
@@ -1160,50 +1033,11 @@ const char* DASHBOARD_HTML = R"rawliteral(
         // ============================================
         let systemEnabled = true;
         let maxDailyVolume = 2000;
-        let alarmLevel = 3;  // poziomy 0-5, domyślnie 3 = głośność 20
-
-        function volLevelToVol(l) { return (l + 1) * 5; }
-        function volToLevel(v)    { return Math.round(v / 5) - 1; }
-
-        function updateVolBtn() {
-            var lbl = document.getElementById('volCenterLabel');
-            if (lbl) lbl.textContent = 'Vol ' + alarmLevel + '/5';
-        }
-
-        function handleVolBtnClick(e) {
-            var el = e.currentTarget;
-            var x  = e.clientX - el.getBoundingClientRect().left;
-            var w  = el.offsetWidth;
-            var nl = alarmLevel;
-            if      (x < w * 0.30) nl = Math.max(0, alarmLevel - 1);
-            else if (x > w * 0.70) nl = Math.min(5, alarmLevel + 1);
-            else return;
-            if (nl === alarmLevel) return;
-            alarmLevel = nl;
-            updateVolBtn();
-            secureFetch('api/audio-volume', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: 'volume=' + volLevelToVol(nl)
-            }).then(function(r){ return r ? r.json() : null; })
-              .then(function(d){ if (d && !d.success) { alarmLevel = nl; updateVolBtn(); } })
-              .catch(function(){});
-        }
 
         // Manual pump countdown state
         var pumpCountdownTimer = null;
         var pumpOnTimeMs = 0;
         var MANUAL_PUMP_DURATION_S = 60;
-
-        // Mixing pump countdown state
-        var mixingCountdownTimer = null;
-        var mixingOnTimeMs = 0;
-        var MIXING_PUMP_DURATION_S = 300;
-
-        // Peristaltic pump countdown state
-        var peristalticCountdownTimer = null;
-        var peristalticOnTimeMs = 0;
-        var PERISTALTIC_PUMP_DURATION_S = 60;
 
         // ============================================
         // SYSTEM TOGGLE (Auto Mode / Service Mode)
@@ -1258,41 +1092,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     }
                 })
                 .catch((error) => console.error("Failed to load system state:", error));
-        }
-
-        // ============================================
-        // ALARM AUDIO TOGGLE (bistable ON/OFF)
-        // ============================================
-        function toggleAlarm() {
-            const btn = document.getElementById("alarmBtn");
-            btn.disabled = true;
-
-            secureFetch("api/alarm-toggle", { method: "POST" })
-                .then((response) => {
-                    if (!response) { btn.disabled = false; return; }
-                    return response.json();
-                })
-                .then((data) => {
-                    if (!data) return;
-                    if (data.success) updateAlarmButton(data.muted);
-                    btn.disabled = false;
-                })
-                .catch((error) => {
-                    console.error("Toggle alarm error:", error);
-                    btn.disabled = false;
-                });
-        }
-
-        function updateAlarmButton(muted) {
-            const btn = document.getElementById("alarmBtn");
-            if (!btn) return;
-            if (muted) {
-                btn.textContent = "Alert Sound OFF";
-                btn.className = "btn btn-kalk-off";
-            } else {
-                btn.textContent = "Alert Sound ON";
-                btn.className = "btn btn-kalk-on";
-            }
         }
 
         // ============================================
@@ -1368,132 +1167,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 btn.className = "btn btn-off";
                 if (pumpCountdownTimer) { clearInterval(pumpCountdownTimer); pumpCountdownTimer = null; }
                 pumpOnTimeMs = 0;
-            }
-        }
-
-        // ============================================
-        // MIXING PUMP DIRECT (bistable + 300s countdown)
-        // ============================================
-        function toggleMixingPump() {
-            const btn = document.getElementById("mixingPumpBtn");
-            const isOn = btn.classList.contains("btn-primary");
-            btn.disabled = true;
-            secureFetch("api/mixing-pump", {
-                method: "POST",
-                headers: {"Content-Type": "application/x-www-form-urlencoded"},
-                body: "action=" + (isOn ? "off" : "on")
-            })
-            .then(function(r) { if (!r) return null; return r.json(); })
-            .then(function(data) {
-                if (data && data.success) {
-                    if (data.active) mixingOnTimeMs = Date.now();
-                    updateMixingPumpButton(data.active);
-                } else if (data) console.error("Mixing pump error:", data.error);
-                btn.disabled = false;
-            })
-            .catch(function(e) { console.error("Mixing pump error:", e); btn.disabled = false; });
-        }
-
-        function startMixingCountdown() {
-            if (mixingCountdownTimer) clearInterval(mixingCountdownTimer);
-            mixingCountdownTimer = setInterval(function() {
-                var elapsed = Math.floor((Date.now() - mixingOnTimeMs) / 1000);
-                var remaining = MIXING_PUMP_DURATION_S - elapsed;
-                var btn = document.getElementById("mixingPumpBtn");
-                if (!btn || !btn.classList.contains("btn-primary")) {
-                    clearInterval(mixingCountdownTimer); mixingCountdownTimer = null; return;
-                }
-                if (remaining <= 0) { clearInterval(mixingCountdownTimer); mixingCountdownTimer = null; return; }
-                btn.textContent = "Mixing ON " + remaining + "s";
-            }, 1000);
-        }
-
-        function updateMixingPumpButton(isOn, kalkState) {
-            var btn = document.getElementById("mixingPumpBtn");
-            if (!btn) return;
-            if (isOn && kalkState === "DIRECT_MIX") {
-                if (!mixingOnTimeMs) mixingOnTimeMs = Date.now();
-                if (!mixingCountdownTimer) startMixingCountdown();
-                var remaining = Math.max(0, MIXING_PUMP_DURATION_S - Math.floor((Date.now() - mixingOnTimeMs) / 1000));
-                btn.textContent = "Mixing ON " + remaining + "s";
-                btn.className = "btn btn-primary";
-                btn.disabled = false;
-            } else if (isOn) {
-                // Scheduled cycle — do not interfere
-                btn.textContent = "Mixing ON (auto)";
-                btn.className = "btn btn-primary";
-                btn.disabled = true;
-                if (mixingCountdownTimer) { clearInterval(mixingCountdownTimer); mixingCountdownTimer = null; }
-                mixingOnTimeMs = 0;
-            } else {
-                btn.textContent = "Mixing Pump OFF";
-                btn.className = "btn btn-off";
-                btn.disabled = false;
-                if (mixingCountdownTimer) { clearInterval(mixingCountdownTimer); mixingCountdownTimer = null; }
-                mixingOnTimeMs = 0;
-            }
-        }
-
-        // ============================================
-        // PERISTALTIC PUMP DIRECT (bistable + 60s countdown)
-        // ============================================
-        function togglePeristalticPump() {
-            const btn = document.getElementById("peristalticPumpBtn");
-            const isOn = btn.classList.contains("btn-primary");
-            btn.disabled = true;
-            secureFetch("api/peristaltic-pump", {
-                method: "POST",
-                headers: {"Content-Type": "application/x-www-form-urlencoded"},
-                body: "action=" + (isOn ? "off" : "on")
-            })
-            .then(function(r) { if (!r) return null; return r.json(); })
-            .then(function(data) {
-                if (data && data.success) {
-                    if (data.active) peristalticOnTimeMs = Date.now();
-                    updatePeristalticPumpButton(data.active);
-                } else if (data) console.error("Peristaltic pump error:", data.error);
-                btn.disabled = false;
-            })
-            .catch(function(e) { console.error("Peristaltic pump error:", e); btn.disabled = false; });
-        }
-
-        function startPeristalticCountdown() {
-            if (peristalticCountdownTimer) clearInterval(peristalticCountdownTimer);
-            peristalticCountdownTimer = setInterval(function() {
-                var elapsed = Math.floor((Date.now() - peristalticOnTimeMs) / 1000);
-                var remaining = PERISTALTIC_PUMP_DURATION_S - elapsed;
-                var btn = document.getElementById("peristalticPumpBtn");
-                if (!btn || !btn.classList.contains("btn-primary")) {
-                    clearInterval(peristalticCountdownTimer); peristalticCountdownTimer = null; return;
-                }
-                if (remaining <= 0) { clearInterval(peristalticCountdownTimer); peristalticCountdownTimer = null; return; }
-                btn.textContent = "Peristaltic ON " + remaining + "s";
-            }, 1000);
-        }
-
-        function updatePeristalticPumpButton(isOn, kalkState) {
-            var btn = document.getElementById("peristalticPumpBtn");
-            if (!btn) return;
-            if (isOn && kalkState === "DIRECT_DOSE") {
-                if (!peristalticOnTimeMs) peristalticOnTimeMs = Date.now();
-                if (!peristalticCountdownTimer) startPeristalticCountdown();
-                var remaining = Math.max(0, PERISTALTIC_PUMP_DURATION_S - Math.floor((Date.now() - peristalticOnTimeMs) / 1000));
-                btn.textContent = "Peristaltic ON " + remaining + "s";
-                btn.className = "btn btn-primary";
-                btn.disabled = false;
-            } else if (isOn) {
-                // Scheduled cycle — do not interfere
-                btn.textContent = "Peristaltic ON (auto)";
-                btn.className = "btn btn-primary";
-                btn.disabled = true;
-                if (peristalticCountdownTimer) { clearInterval(peristalticCountdownTimer); peristalticCountdownTimer = null; }
-                peristalticOnTimeMs = 0;
-            } else {
-                btn.textContent = "Peristaltic OFF";
-                btn.className = "btn btn-off";
-                btn.disabled = false;
-                if (peristalticCountdownTimer) { clearInterval(peristalticCountdownTimer); peristalticCountdownTimer = null; }
-                peristalticOnTimeMs = 0;
             }
         }
 
@@ -1604,20 +1277,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             }
         }
 
-        function updateKalkPumpBadge(isActive) {
-            const el = document.getElementById('kalkPumpBadge');
-            if (!el) return;
-            el.textContent = 'Kalk Pump: ' + (isActive ? 'ON' : 'OFF');
-            el.className = isActive ? 'sub-on' : 'sub-off';
-        }
-
-        function updateMixingPumpBadge(isActive) {
-            const el = document.getElementById('mixingPumpBadge');
-            if (!el) return;
-            el.textContent = 'Mix Pump: ' + (isActive ? 'ON' : 'OFF');
-            el.className = isActive ? 'sub-on' : 'sub-off';
-        }
-
         function updateSystemBadge(badgeId, hasError, isDisabled, hasWarning) {
             const main = document.getElementById('statusMain');
             if (!main) return;
@@ -1681,8 +1340,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     updateSensorBadge("sensor1Badge", data.sensor_active);
                     updateSensorBadge("sensor2Badge", data.sensor_active);
                     updatePumpBadge("pumpBadge", data.pump_active, data.pump_attempt || 0);
-                    updateKalkPumpBadge(data.peristaltic_pump_active || false);
-                    updateMixingPumpBadge(data.mixing_pump_active || false);
                     updateSystemBadge("systemBadge", data.system_error, data.system_disabled, hasLowResWarning);
 
                     // Process status
@@ -1696,10 +1353,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
                     // Sync manual pump button with actual pump state
                     updatePumpButton(data.pump_active);
-                    updateMixingPumpButton(data.mixing_pump_active || false, data.kalk_state || "");
-                    updatePeristalticPumpButton(data.peristaltic_pump_active || false, data.kalk_state || "");
-                    if (typeof data.audio_muted  !== 'undefined') updateAlarmButton(data.audio_muted);
-                    if (typeof data.audio_volume !== 'undefined') { alarmLevel = volToLevel(data.audio_volume); updateVolBtn(); }
 
                     // WiFi status
                     const wifiItem = document.getElementById("wifiItem");
@@ -1740,15 +1393,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         extendedBtn.disabled = data.pump_active && !calibrationActive;
                     }
 
-                    // Kalkwasser schedule update
-                    if (data.rtc_ts) {
-                        updateKalkSchedule(data.rtc_ts,
-                                           data.kalk_mix_done_bits  || 0,
-                                           data.kalk_dose_done_bits || 0,
-                                           data.kalk_state || 'IDLE',
-                                           data.kalk_enabled || false,
-                                           data.kalk_alarm || false);
-                    }
                 })
                 .catch((error) => {
                     console.error("Status update failed:", error);
@@ -2188,176 +1832,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
         }
 
         // ============================================
-        // KALKWASSER
-        // ============================================
-
-        var KALK_MIX_BASES  = [0, 6, 12, 18];
-        var KALK_DOSE_HOURS = [2,3,4,5,8,9,10,11,14,15,16,17,20,21,22,23];
-
-        function updateKalkSchedule(rtcTs, mixDoneBits, doseDoneBits, kalkState, kalkEnabled, kalkAlarm) {
-            var wrap = document.getElementById('kalkScheduleWrap');
-            if (!wrap) return;
-
-            var banner = document.getElementById('kalkAlarmBanner');
-            if (banner) banner.style.display = (kalkEnabled && kalkAlarm) ? '' : 'none';
-
-            var now = new Date(rtcTs * 1000);
-            var nowH = now.getHours();
-            var nowTotalMin = nowH * 60 + now.getMinutes();
-
-            function setTile(id, cls) {
-                var el = document.getElementById(id);
-                if (el) el.className = 'kalk-tile kalk-ev-' + cls;
-            }
-
-            // Mix slots: [0,6,12,18]:15
-            // Bit i in mixDoneBits = slot i was executed today (set by firmware).
-            var isMixState = (kalkState === 'MIXING' || kalkState === 'WAIT_MIX');
-            KALK_MIX_BASES.forEach(function(base, i) {
-                var slotMin   = base * 60 + 15;
-                var isNowSlot = (nowTotalMin >= slotMin && nowTotalMin < slotMin + 360);
-                var slotDone  = !!(mixDoneBits & (1 << i));
-                var cls;
-                if      (isMixState && isNowSlot) cls = 'active';   // yellow — mixing/settling now
-                else if (slotDone)                cls = 'done';     // green — confirmed executed today
-                else if (slotMin > nowTotalMin)   cls = 'pending';  // white — future
-                else                              cls = 'missed';   // red — past, not executed
-                setTile('kalkMix' + i, cls);
-            });
-
-            // Dose slots: 02-05, 08-11, 14-17, 20-23
-            // Bit i in doseDoneBits = slot i was executed today (set by firmware).
-            var isDosing = (kalkState === 'DOSING' || kalkState === 'WAIT_DOSE');
-            KALK_DOSE_HOURS.forEach(function(h, i) {
-                var slotDone = !!(doseDoneBits & (1 << i));
-                var cls;
-                if      (isDosing && nowH === h) cls = 'active';   // yellow — dosing now
-                else if (slotDone)               cls = 'done';     // green — confirmed executed today
-                else if (h > nowH)               cls = 'pending';  // white — future
-                else                             cls = 'missed';   // red — past, not executed
-                setTile('kalkDose' + i, cls);
-            });
-        }
-
-        var kalkCalibActive    = false;
-        var kalkCalibTimer     = null;
-        var kalkCalibRemaining = 0;
-
-        function updateKalkCalibBtn(isOn) {
-            var btn = document.getElementById('kalkCalibBtn');
-            if (!btn) return;
-            btn.textContent = isOn ? ('Calibration ON ' + kalkCalibRemaining + 's') : 'Calibration OFF';
-            btn.className   = 'btn ' + (isOn ? 'btn-primary' : 'btn-off');
-        }
-
-        function toggleKalkCalibration() {
-            if (kalkCalibActive) return;
-            var btn = document.getElementById('kalkCalibBtn');
-            btn.disabled = true;
-            secureFetch('api/kalkwasser-calibrate', { method: 'POST' })
-                .then(function(r) { return r ? r.json() : null; })
-                .then(function(data) {
-                    if (data && data.success) {
-                        kalkCalibActive    = true;
-                        kalkCalibRemaining = data.duration_s || 30;
-                        btn.disabled = false;
-                        updateKalkCalibBtn(true);
-                        kalkCalibTimer = setInterval(function() {
-                            kalkCalibRemaining--;
-                            if (kalkCalibRemaining <= 0) {
-                                clearInterval(kalkCalibTimer);
-                                kalkCalibTimer  = null;
-                                kalkCalibActive = false;
-                                updateKalkCalibBtn(false);
-                            } else {
-                                updateKalkCalibBtn(true);
-                            }
-                        }, 1000);
-                    } else {
-                        alert('Calibration failed: ' + (data && data.error ? data.error : 'pump busy'));
-                        btn.disabled = false;
-                    }
-                })
-                .catch(function() { btn.disabled = false; });
-        }
-
-        function saveKalkFlowRate() {
-            var ml = parseFloat(document.getElementById('kalkMeasuredMl').value);
-            if (!ml || ml <= 0) { alert('Enter measured volume in ml'); return; }
-            secureFetch('api/kalkwasser-flow-rate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'measured_ml=' + ml
-            })
-            .then(function(r) { return r ? r.json() : null; })
-            .then(function(data) {
-                if (data && data.success) {
-                    var fr = data.flow_rate_ul_s || 0;
-                    if (fr > 0) {
-                        document.getElementById('kalkMeasuredMl').placeholder = (fr / 1000 * 30).toFixed(1);
-                    }
-                }
-            });
-        }
-
-        var kalkIsEnabled = false;
-
-        function updateKalkButton(enabled) {
-            kalkIsEnabled = enabled;
-            var btn = document.getElementById('kalkwasserBtn');
-            if (!btn) return;
-            if (enabled) {
-                btn.className = 'btn btn-kalk-on';
-                btn.textContent = 'Kalkwasser ON';
-            } else {
-                btn.className = 'btn btn-kalk-off';
-                btn.textContent = 'Kalkwasser OFF';
-            }
-        }
-
-        function toggleKalkwasser() {
-            secureFetch('api/kalkwasser-config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'enabled=' + (kalkIsEnabled ? 0 : 1)
-            })
-            .then(function(r) { return r ? r.json() : null; })
-            .then(function(data) {
-                if (data && data.success) updateKalkButton(!!data.enabled);
-            });
-        }
-
-        function saveKalkConfig() {
-            var dose = parseInt(document.getElementById('kalkDailyDose').value);
-            if (isNaN(dose) || dose < 1 || dose > 5000) return;
-            if (!confirm("Set Kalkwasser daily dose to " + dose + " ml?")) return;
-            secureFetch('api/kalkwasser-config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'enabled=' + (kalkIsEnabled ? 1 : 0) + '&daily_dose_ml=' + dose
-            })
-            .then(function(r) { return r ? r.json() : null; })
-            .then(function(data) {
-            });
-        }
-
-        function loadKalkConfig() {
-            secureFetch('api/kalkwasser-config')
-                .then(function(r) { return r ? r.json() : null; })
-                .then(function(data) {
-                    if (!data || !data.success) return;
-                    updateKalkButton(!!data.enabled);
-                    var dose = data.daily_dose_ml || 0;
-                    var inp = document.getElementById('kalkDailyDose');
-                    if (inp && document.activeElement !== inp) inp.value = dose;
-                    var fr = data.flow_rate_ul_per_s || 0;
-                    if (fr > 0) {
-                        document.getElementById('kalkMeasuredMl').placeholder = (fr / 1000 * 30).toFixed(1);
-                    }
-                });
-        }
-
-        // ============================================
         // INITIALIZATION
         // ============================================
 
@@ -2365,15 +1839,12 @@ const char* DASHBOARD_HTML = R"rawliteral(
         pollingIntervals.push(setInterval(updateStatus, 2000));
         pollingIntervals.push(setInterval(loadSystemState, 30000));
         pollingIntervals.push(setInterval(loadDailyVolume, 10000));
-        pollingIntervals.push(setInterval(loadKalkConfig, 30000));
 
         // Initial loads
-        updateVolBtn();
         updateStatus();
         loadSystemState();
         loadVolumePerSecond();
         loadDailyVolume();
-        loadKalkConfig();
     </script>
 </body>
 </html>

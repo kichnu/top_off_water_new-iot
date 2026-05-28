@@ -98,27 +98,6 @@ struct PumpCycle {
 #define FRAM_ADDR_TOPOFF_WPTR       0x0602   // 2 bytes — write pointer (ring buffer)
 #define FRAM_ADDR_TOPOFF_DATA       0x0610   // Start danych: 60 × 20 = 1200 bajtów → kończy się 0x0AC0
 
-// Kalkwasser Scheduler config (20 bytes + 2 checksum)
-// Przeniesione przed ring buffer — ring buffer jest ostatnim blokiem w FRAM
-#define FRAM_ADDR_KALKWASSER_CFG    0x05B0   // 20 bytes — KalkwasserConfig struct (0x05B0–0x05C3)
-#define FRAM_ADDR_KALKWASSER_CHKSUM 0x05C4   // 2 bytes  — checksum
-
-// Konfiguracja Kalkwasser (zapisywana w FRAM)
-struct KalkwasserConfig {
-    uint8_t  magic;              // 0xCA = valid
-    uint8_t  enabled;            // 1 = active
-    uint16_t daily_dose_ml;      // dobowa dawka kalkwasser [ml]
-    uint32_t flow_rate_ul_per_s; // kalibracja: µl/s (30s test)
-    uint32_t last_dose_ts;       // UTC timestamp ostatniej dawki
-    uint32_t last_mix_ts;        // UTC timestamp ostatniego mieszania
-    uint16_t dose_done_bits;     // bitmaska slotów dawkowania wykonanych dziś (bit i = DOSE_HOURS[i])
-    uint8_t  mix_done_bits;      // bitmaska slotów mieszania wykonanych dziś (bit i = MIX_BASE[i])
-    uint8_t  done_day;           // dzień miesiąca (local) dla którego bity są ważne (0 = brak)
-};
-static_assert(sizeof(KalkwasserConfig) == 20, "KalkwasserConfig must be 20 bytes");
-
-#define KALKWASSER_CONFIG_MAGIC 0xCA
-
 // Common constants
 // #define FRAM_MAGIC_NUMBER      0x57415452  // "WATR" in hex
 // #define FRAM_DATA_VERSION      0x0002      // Version 2 (updated for dual-mode)
@@ -190,31 +169,6 @@ bool loadEmaBlockFromFRAM(EmaBlock& ema);
 // Konfiguracja algorytmu
 bool saveTopOffConfigToFRAM(const TopOffConfig& cfg);
 bool loadTopOffConfigFromFRAM(TopOffConfig& cfg);
-
-// Kalkwasser config
-bool saveKalkwasserConfigToFRAM(const KalkwasserConfig& cfg);
-bool loadKalkwasserConfigFromFRAM(KalkwasserConfig& cfg);
-
-// ===============================
-// AUDIO CONFIG (volume persistence)
-// 0x0AD6–0x0AD9: 4 bytes struct, 0x0ADA–0x0ADB: 2 bytes checksum
-// ===============================
-#define FRAM_ADDR_AUDIO_CFG    0x0AD6
-#define FRAM_ADDR_AUDIO_CHKSUM 0x0ADA
-#define AUDIO_CONFIG_MAGIC     0xA8
-#define AUDIO_VOLUME_DEFAULT   20   // poziom 3 z 5 (głośność 20/30)
-#define AUDIO_VOLUME_MIN        5   // poziom 0 (min)
-#define AUDIO_VOLUME_MAX       30   // poziom 5 (max)
-
-struct AudioConfig {
-    uint8_t volume;   // 3–30
-    uint8_t magic;    // AUDIO_CONFIG_MAGIC
-    uint8_t _pad[2];
-};
-static_assert(sizeof(AudioConfig) == 4, "AudioConfig must be 4 bytes");
-
-bool saveAudioConfigToFRAM(uint8_t volume);
-bool loadAudioConfigFromFRAM(uint8_t& volume);
 
 // ===============================
 // FRAM CREDENTIALS SECTION

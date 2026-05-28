@@ -2,8 +2,6 @@
 #include "hardware_pins.h"
 #include "../config/config.h"
 #include "../hardware/pump_controller.h"
-#include "../hardware/mixing_pump.h"
-#include "../hardware/peristaltic_pump.h"
 #include "../network/wifi_manager.h"
 #include "../algorithm/water_algorithm.h"
 #include "../algorithm/algorithm_config.h"
@@ -26,8 +24,8 @@ static bool calcLedState() {
         return (phase < 100) || (phase >= 200 && phase < 300) || (phase >= 400 && phase < 500);
     }
 
-    // Priority 2: Any pump active — solid on
-    if (isPumpActive() || isMixingPumpActive() || isPeristalticPumpRunning()) {
+    // Priority 2: ATO pump active — solid on
+    if (isPumpActive()) {
         return true;
     }
 

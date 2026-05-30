@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, fixed-dose pump algorithm with EMA trend tracking, kalkwasser dosing (peristaltic + mixing pump), web dashboard, and captive portal provisioning.
+ESP32-C6 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C6. Features single float sensor detection, second sensor for available-water reservoir, fixed-dose pump algorithm with EMA trend tracking, web dashboard, and captive portal provisioning.
 
 ## Build Commands
 
 ```bash
 # Build and upload firmware
-pio run -e seeed_xiao_esp32c3 -t upload
+pio run -e seeed_xiao_esp32c6 -t upload
 
 # Monitor serial output (115200 baud)
 pio device monitor
 
 # Clean build
-pio run -e seeed_xiao_esp32c3 -t clean
+pio run -e seeed_xiao_esp32c6 -t clean
 
 # Full rebuild
-pio run -e seeed_xiao_esp32c3 -t clean && pio run -e seeed_xiao_esp32c3 -t upload
+pio run -e seeed_xiao_esp32c6 -t clean && pio run -e seeed_xiao_esp32c6 -t upload
 ```
 
 ## Architecture
@@ -28,17 +28,16 @@ pio run -e seeed_xiao_esp32c3 -t clean && pio run -e seeed_xiao_esp32c3 -t uploa
 
 `src/main.cpp` implements two runtime modes determined at boot:
 
-1. **Provisioning Mode** - Activated by holding reset button (GPIO 5) for 5+ seconds during boot. Starts WiFi AP with captive portal for initial credential setup.
+1. **Provisioning Mode** - Activated by holding reset button (GPIO 2) for 5+ seconds during boot. Starts WiFi AP with captive portal for initial credential setup.
 
-2. **Production Mode** - Normal operation with water algorithm, kalkwasser scheduler, web server.
+2. **Production Mode** - Normal operation with water algorithm, web server.
 
 ### Core Modules (src/)
 
 ```
-algorithm/          Water dosing algorithm + kalkwasser scheduler
+algorithm/          Water dosing algorithm
   algorithm_config.h   Algorithm constants, TopOffRecord, EmaBlock, TopOffConfig
   water_algorithm.*    Main WaterAlgorithm class (fixed-dose + EMA)
-  kalkwasser_scheduler.*  KalkwasserScheduler (mixing + peristaltic pump)
 
 config/             Configuration and credential management
   config.*             Global settings, system enable/disable
@@ -50,23 +49,24 @@ crypto/             AES-256 encryption for FRAM credentials
   aes.*, sha256.*, fram_encryption.*
 
 hardware/           Hardware abstraction layer
+  fram_constants.h     Shared FRAM magic, version, field size constants
   fram_controller.*    FRAM memory management (all persistent data)
   hardware_pins.h      GPIO pin definitions
   pump_controller.*    ATO pump relay control
-  mixing_pump.*        Mixing pump relay control (kalkwasser)
-  peristaltic_pump.*   Peristaltic pump via TMC2209 LEDC (kalkwasser)
   rtc_controller.*     DS3231 RTC with NTP sync
-  water_sensors.*      Float sensor debouncing
+  status_led.*         Status LED control
+  water_sensors.*      Float sensor debouncing (ATO + available-water)
 
 network/            Network connectivity
   wifi_manager.*       WiFi connection with dynamic credentials
-  vps_logger.*         Cloud event logging (currently disabled)
 
 provisioning/       Captive portal for initial setup
   ap_core.*            Access point management
   ap_server.*          Web server for provisioning
   ap_handlers.*        HTTP request handlers
   ap_html.*            Embedded HTML pages
+  credentials_validator.*  Input validation for provisioning form
+  prov_config.h        Provisioning constants (button pin, hold time)
   prov_detector.*      Boot button detection
   wifi_scanner.*       Network scanning
 
@@ -97,16 +97,6 @@ Key parameters in `algorithm_config.h`:
 - `DEFAULT_DAILY_LIMIT_ML` (2000ml) - daily safety limit
 - `DEFAULT_MIN_BOOTSTRAP` (3) - cycles before EMA alerts activate
 
-### Kalkwasser Scheduler
-
-Located in `algorithm/kalkwasser_scheduler.cpp`:
-
-- **Mixing:** 4× daily at 00:15, 06:15, 12:15, 18:15 local time; 5 min run + 1h settle
-- **Dosing:** 16× daily (every full hour except mix windows); peristaltic pump via TMC2209
-- **Concurrency:** waits up to 10 min for ATO cycle to finish; skips if timeout
-- **State:** `KALK_IDLE → KALK_MIXING/DOSING → KALK_IDLE`
-- **OFF state is permanent** — survives restart, power cycle, 24h auto-restart; NOT affected by System Reset button
-
 ### FRAM Memory Layout
 
 Defined in `hardware/fram_controller.h`:
@@ -116,23 +106,20 @@ Defined in `hardware/fram_controller.h`:
 - `0x0560-0x0575`: TopOffConfig (20B + 2B checksum), magic=0xA7
 - `0x0580-0x0591`: EmaBlock (16B + 2B checksum)
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
-- `0x0AC0-0x0AD5`: KalkwasserConfig (20B + 2B checksum), magic=0xCA
 
-### Hardware Pin Configuration (Seeed Xiao ESP32-C3)
+### Hardware Pin Configuration (Seeed Xiao ESP32-C6)
 
 Defined in `hardware/hardware_pins.h`:
-- GPIO 3:  `MIXING_PUMP_RELAY_PIN` — mixing pump relay (HIGH = ON)
-- GPIO 4:  `RESERVE_PUMP_RELAY_PIN` — reserve/spare relay
-- GPIO 5:  `RESET_PIN` — provisioning button (INPUT_PULLUP, active LOW, hold 5s)
-- GPIO 6:  `I2C_SDA_PIN` — I2C bus (DS3231 RTC + FRAM MB85RC256V)
-- GPIO 7:  `I2C_SCL_PIN` — I2C bus
-- GPIO 8:  `ERROR_SIGNAL_PIN` — error output (HIGH = active, buzzer/LED)
-- GPIO 9:  `WATER_SENSOR_PIN` — float sensor (INPUT_PULLUP, active LOW)
-- GPIO 10: `PERYSTALTIC_PUMP_DRIVER_PIN` — peristaltic pump via TMC2209 LEDC
+- GPIO 0:  `WATER_SENSOR_PIN` — ATO float sensor (INPUT_PULLUP, active LOW)
+- GPIO 1:  `AVAILABLE_WATER_SENSOR_PIN` — reservoir level sensor (INPUT_PULLUP, active LOW)
+- GPIO 2:  `RESET_PIN` — provisioning button (INPUT_PULLUP, active LOW, hold 5s)
+- GPIO 18: `BUZZER_PIN` — buzzer (HIGH = ON)
+- GPIO 20: `STATUS_LED` — status LED
 - GPIO 21: `ATO_PUMP_RELAY_PIN` — ATO pump relay (**active LOW**: LOW = ON, HIGH = OFF)
+- GPIO 22: `I2C_SDA_PIN` — I2C bus (DS3231 RTC + FRAM MB85RC256V)
+- GPIO 23: `I2C_SCL_PIN` — I2C bus
 
-> Note: GPIO 2 was the old ATO relay pin — ADC1_CH2 conflicts with WiFi periman on ESP32-C3.
-> Comment in hardware_pins.h says "HIGH = ON" in some places but relay is **active LOW**.
+> Note: ATO pump relay is **active LOW** (LOW = ON, HIGH = OFF).
 
 ### Key API Endpoints (Production Mode)
 
@@ -165,15 +152,10 @@ History/volumes:
 - `POST /api/set-dose` — set dose_ml
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 
-Kalkwasser:
-- `GET|POST /api/kalkwasser-config` — get/set (enabled, daily_dose_ml)
-- `POST /api/kalkwasser-calibrate` — start/stop calibration run (30s)
-- `POST /api/kalkwasser-flow-rate` — save measured_ml (30s test result)
-
 ### Dependencies (platformio.ini)
 
-- ESPAsyncWebServer (me-no-dev)
-- AsyncTCP (me-no-dev)
+- ESPAsyncWebServer (mathieucarbou) ^3.3.23
+- AsyncTCP (mathieucarbou) ^3.2.14
 - ArduinoJson ^7.4.2
 - RTClib ^2.1.1 (Adafruit)
 - Adafruit FRAM I2C
@@ -194,7 +176,7 @@ Global system control with 30-minute auto-re-enable timeout. Functions in `confi
 - `isSystemDisabled()`
 - `checkSystemAutoEnable()`
 
-When system is disabled, both WaterAlgorithm and KalkwasserScheduler stop immediately.
+When system is disabled, WaterAlgorithm stops immediately.
 
 ### POST Body Parameters
 
@@ -203,7 +185,7 @@ All POST handlers use form-encoded body — never JSON for POST requests.
 
 ### 24-Hour Auto-Restart
 
-System automatically restarts after 24 hours uptime (`main.cpp`). All pumps safely stopped before restart. Kalkwasser OFF state survives because it's persisted to FRAM.
+System automatically restarts after 24 hours uptime (`main.cpp`). ATO pump safely stopped before restart.
 
 ### Timezone Handling
 

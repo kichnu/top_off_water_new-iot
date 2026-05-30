@@ -15,7 +15,7 @@
 #include "security/rate_limiter.h"
 #include "web/web_server.h"
 #include "algorithm/water_algorithm.h"
-#include "hardware/status_led.h"
+#include "hardware/buzzer_controller.h"
 #include "provisioning/prov_detector.h"
 #include "provisioning/ap_core.h"
 #include "provisioning/ap_server.h"
@@ -23,9 +23,14 @@
 static uint32_t g_restartAtTs = 0;  // docelowy timestamp restartu (lokalna północ); 0 = wyłączony
 
 void setup() {
+   
+    delay(2000); // Wait for serial monitor
+
+    initBuzzer();
+    buzzerPowerOn();
+
     // Initialize core systems
     initLogging();
-    delay(5000); // Wait for serial monitor
 
     LOG_INFO("");
     LOG_INFO("====================================");
@@ -50,6 +55,7 @@ void setup() {
         if (!initFRAM()) {
             LOG_INFO("WARNING: FRAM initialization failed!");
             LOG_INFO("Credentials may not be saved properly");
+            buzzerCritical();
             delay(2000);
         } else {
             LOG_INFO("");
@@ -87,7 +93,9 @@ void setup() {
         LOG_INFO("");
         LOG_INFO("=== CAPTIVE PORTAL READY ===");
         LOG_INFO("Open a browser or wait for captive portal popup");
-  
+
+        buzzerOK();
+
         // Enter blocking loop - never returns
         runProvisioningLoop();
         
@@ -100,7 +108,6 @@ void setup() {
 
     initWaterSensor();
     initPumpController();
-    initStatusLed();
 
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);  // Init I2C before FRAM
     Wire.setClock(100000);
@@ -179,6 +186,14 @@ void setup() {
     LOG_INFO("=== System initialization complete ===");
     LOG_INFO("====================================");
 
+    // Sygnał dźwiękowy końca startu — CRITICAL jeśli cokolwiek krytycznego nie działa
+    bool bootOk = isFramInitialized() && credentials_loaded && isWiFiConnected() && isRTCWorking();
+    if (bootOk) {
+        buzzerOK();
+    } else {
+        buzzerCritical();
+    }
+
     // Wyznaczyć docelowy czas restartu = najbliższa lokalna północ
     // Guard: RTC musi działać i mieć sensowny czas (rok > 2020)
     uint32_t nowTs = (uint32_t)getUnixTimestamp();
@@ -223,7 +238,6 @@ void loop() {
     // Pozostałe systemy co 100 ms
     if (now - lastUpdate >= 100) {
         updatePumpController();
-        updateStatusLed();
         updateSessionManager();
         updateRateLimiter();
         updateWiFi();

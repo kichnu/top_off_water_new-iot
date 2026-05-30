@@ -104,6 +104,7 @@ struct PumpCycle {
 
 // Basic FRAM functions
 bool initFRAM();
+bool isFramInitialized();
 bool framReconnect();
 bool loadVolumeFromFRAM(float& volume);
 bool saveVolumeToFRAM(float volume);

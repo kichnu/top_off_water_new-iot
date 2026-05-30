@@ -1,6 +1,7 @@
 #include "ap_core.h"
 #include "prov_config.h"
 #include "../core/logging.h"
+#include "../hardware/buzzer_controller.h"
 
 // Global DNS server instance
 static DNSServer dnsServer;
@@ -113,6 +114,8 @@ void runProvisioningLoop() {
             lastStatusPrint = now;
         }
         
+        updateBuzzerProvisioning();
+
         // Small delay to prevent watchdog timeout
         delay(10);
         

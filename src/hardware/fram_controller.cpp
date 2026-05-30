@@ -38,6 +38,10 @@ bool framReconnect() {
     return true;
 }
 
+bool isFramInitialized() {
+    return framInitialized;
+}
+
 bool initFRAM() {
     LOG_INFO("");
     LOG_INFO("Initializing FRAM at address 0x50...");

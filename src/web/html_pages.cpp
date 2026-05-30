@@ -465,11 +465,11 @@ const char* DASHBOARD_HTML = R"rawliteral(
         /* ===== SECOND CARD: Pump Control ===== */
         .pump-controls {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 12px;
         }
         @media (max-width: 480px) {
-            .pump-controls { grid-template-columns: repeat(2, 1fr); }
+            .pump-controls { grid-template-columns: repeat(1, 1fr); }
         }
         .btn-service {
             background: rgba(249,115,22,0.10); border: 1px solid rgba(249,115,22,0.35);
@@ -556,7 +556,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 12px;
-            align-items: start;
         }
 
         /* Single Dose: pierwsza kolumna na desktopie (ostatnia w HTML → order:-1) */
@@ -823,34 +822,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             </div>
         </div>
 
-        <!-- THIRD CARD: Statistics -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon" style="background: rgba(234, 179, 8, 0.15);">
-                    <svg fill="currentColor" style="color: var(--accent-yellow);" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
-                </div>
-                <h2>System Setting</h2>
-            </div>
 
- 
-
-            <div class="stats-columns">
-
-                <!-- Single Dose -->
-                <div class="stat-column stat-col-dose">
-                    <h3>Single Dose - Current Value</h3>
-                    <div class="input-group" style="margin-top: 8px;">
-                        <input type="number" id="doseInput" min="1" max="2000" step="1" placeholder="ml">
-                    </div>
-                    <div class="stat-daily">
-                        <button class="btn btn-secondary btn-small" onclick="setDose()">Set</button>
-                    </div>
-                </div>
-            </div>
-
-            
-            
-        </div>
 
         <!-- ATO PROCESS MONITOR CARD -->
         <div class="card">
@@ -927,37 +899,57 @@ const char* DASHBOARD_HTML = R"rawliteral(
             </div>
         </div>
 
-        <!-- FOURTH CARD: Pump Setting -->
+                <!-- THIRD CARD: Statistics -->
         <div class="card">
             <div class="card-header">
-                <div class="card-header-icon" style="background: rgba(249, 115, 22, 0.15);">
-                    <svg fill="currentColor" style="color: var(--accent-orange);" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                <div class="card-header-icon" style="background: rgba(234, 179, 8, 0.15);">
+                    <svg fill="currentColor" style="color: var(--accent-yellow);" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
                 </div>
-                <h2>Pump Calibration</h2>
+                <h2>System Setting</h2>
             </div>
 
-            <div class="card-subheader">ATO Pump Calibration</div>
-            <div class="settings-row">
-                <div class="setting-item">
-                    <button id="extendedBtn" class="btn btn-off" onclick="toggleAtoCalibration()">Calibration OFF</button>
+ 
+
+            <div class="stats-columns">
+
+                <!-- Single Dose -->
+                <div class="stat-column stat-col-dose" style="display:grid; grid-template-rows:1fr auto auto;">
+                    <div>
+                        <h3>Single Dose - Current Value</h3>
+                        <div class="input-group" style="margin-top: 8px;">
+                            <input type="number" id="doseInput" min="1" max="2000" step="1" placeholder="ml">
+                        </div>
+                    </div>
+                    <div class="stat-daily">
+                        <button class="btn btn-secondary btn-small" onclick="setDose()">Set</button>
+                    </div>
+                    <small style="visibility:hidden; margin-top:6px;">current: —</small>
                 </div>
-                <div class="setting-item input-group">
-                    <label for="calibrationMl" style="text-align: center;">Mililiters</label>
-                    <input type="number" id="calibrationMl" min="1" max="3000" step="1" placeholder="—">
-                    <label for="calibrationSeconds" style="text-align: center;">Seconds</label>
-                    <input type="number" id="calibrationSeconds" min="0" max="3600" step="1" value="0" readonly>
-                    <small id="calibrationCurrent" style="color:#aaa; margin-top:4px;">current: —</small>
+
+                <!-- Pump Calibration -->
+                <div class="stat-column" style="display:grid; grid-template-rows:1fr auto auto;">
+                    <div>
+                        <h3>Pump Calibration</h3>
+                        <div style="display:flex; gap:6px; margin-top:8px;">
+                            <input type="number" id="calibrationMl" min="1" max="3000" step="1" placeholder="ml" style="flex:1;min-width:0;">
+                            <input type="number" id="calibrationSeconds" min="0" max="3600" step="1" value="0" readonly style="flex:1;min-width:0;">
+                        </div>
+                    </div>
+                    <div class="stat-daily" style="gap:6px;">
+                        <button id="extendedBtn" class="btn btn-secondary btn-small" onclick="toggleAtoCalibration()" style="flex:1;">Calibration OFF</button>
+                        <button class="btn btn-secondary btn-small" onclick="updateVolumePerSecond()" style="flex:1;">Update Setting</button>
+                    </div>
+                    <small id="calibrationCurrent" style="color:#aaa; display:block; text-align:center; margin-top:6px;">current: —</small>
                 </div>
-                <div class="setting-item">
-                    <button class="btn btn-primary" onclick="updateVolumePerSecond()">Update Setting</button>
-                </div>
+
             </div>
 
         </div>
 
+
         <!-- Footer -->
         <div class="footer-info">
-            ATO Water System • v3.0
+            ATO Water System • v4.0
         </div>
     </div>
 
@@ -1213,7 +1205,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             const btn = document.getElementById("extendedBtn");
             if (!btn) return;
             btn.textContent = isOn ? "Calibration ON" : "Calibration OFF";
-            btn.className   = "btn " + (isOn ? "btn-primary" : "btn-off");
+            btn.className   = "btn btn-secondary btn-small";
         }
 
         // ============================================

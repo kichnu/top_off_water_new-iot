@@ -1695,8 +1695,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 .then(function(r) { return r ? r.json() : null; })
                 .then(function(data) {
                     if (data && data.success) {
-                        var cv = document.getElementById('chartRate');
-                        if (cv) { var ctx = cv.getContext('2d'); ctx.clearRect(0,0,cv.width,cv.height); }
+                        loadCycleHistory();
                     } else {
                         alert("Delete failed: " + (data && data.error ? data.error : "unknown error"));
                     }

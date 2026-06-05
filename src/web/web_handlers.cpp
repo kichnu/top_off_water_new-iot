@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include "../config/credentials_manager.h"
 #include "../algorithm/water_algorithm.h"
+#include "../hardware/reserve_controller.h"
 
 void handleDashboard(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
@@ -165,12 +166,14 @@ void handleStatus(AsyncWebServerRequest* request) {
     json["uptime"] = millis();
 
     // ============================================
-    // SENSOR STATUS
+    // RESERVE STATUS
     // ============================================
-    json["low_reservoir_count"]   = waterAlgorithm.getLowReservoirCount();
-    json["low_reservoir_warning"] = waterAlgorithm.isLowReservoirWarning();
-    json["low_reservoir_error"]   = (waterAlgorithm.getLastError() == ERROR_LOW_RESERVOIR);
-    json["rtc_ts"]                = (uint32_t)getUnixTimestamp();
+    json["reserve_ml"]          = getReserveMl();
+    json["reserve_config_ml"]   = getReserveConfigMl();
+    json["reserve_sensor_low"]  = isReserveSensorLow();
+    json["reserve_empty"]       = isReserveEmpty();
+    json["reserve_needs_reset"] = isReserveNeedsReset();
+    json["rtc_ts"]            = (uint32_t)getUnixTimestamp();
 
     // ============================================
     // ALARM SCORE
@@ -208,6 +211,12 @@ void handleStatus(AsyncWebServerRequest* request) {
 void handleDirectPumpOn(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
         request->send(401, "text/plain", "Unauthorized");
+        return;
+    }
+
+    if (isReserveEmpty()) {
+        request->send(400, "application/json",
+            "{\"success\":false,\"error\":\"Reserve empty — refill reservoir and reset\"}");
         return;
     }
 
@@ -648,11 +657,18 @@ void handleSystemReset(AsyncWebServerRequest* request) {
         return;
     }
 
+    if (isReserveSensorLow()) {
+        request->send(400, "application/json",
+            "{\"success\":false,\"error\":\"Cannot reset — reservoir sensor still active\"}");
+        return;
+    }
+
+    clearReserveAlarm();
     bool success = waterAlgorithm.resetSystem();
 
     JsonDocument json;
     json["success"] = success;
-    json["state"] = waterAlgorithm.getStateString();
+    json["state"]   = waterAlgorithm.getStateString();
     json["message"] = success ? "System reset to IDLE" : "Reset blocked - logging in progress";
 
     String response;
@@ -695,14 +711,15 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     if (request->method() == HTTP_GET) {
         const TopOffConfig& cfg = waterAlgorithm.getConfig();
         JsonDocument doc;
-        doc["success"]     = true;
-        doc["ema_alpha"]   = cfg.ema_alpha;
-        doc["ema_clamp"]   = cfg.ema_clamp;
-        doc["alarm_p1"]    = cfg.alarm_p1;
-        doc["alarm_p2"]    = cfg.alarm_p2;
-        doc["zone_green"]  = cfg.zone_green;
-        doc["zone_yellow"] = cfg.zone_yellow;
-        doc["initial_ema"] = cfg.initial_ema;
+        doc["success"]        = true;
+        doc["ema_alpha"]      = cfg.ema_alpha;
+        doc["ema_clamp"]      = cfg.ema_clamp;
+        doc["alarm_p1"]       = cfg.alarm_p1;
+        doc["alarm_p2"]       = cfg.alarm_p2;
+        doc["zone_green"]     = cfg.zone_green;
+        doc["zone_yellow"]    = cfg.zone_yellow;
+        doc["initial_ema"]    = cfg.initial_ema;
+        doc["reserve_config_ml"] = getReserveConfigMl();
         String resp; serializeJson(doc, resp);
         request->send(200, "application/json", resp);
         return;
@@ -754,6 +771,16 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
         return;
     }
 
+    uint32_t reserveMl = getReserveConfigMl();
+    if (request->hasParam("reserve_ml", true)) {
+        long v = request->getParam("reserve_ml", true)->value().toInt();
+        if (v < 1 || v > 10000) {
+            request->send(400, "application/json", "{\"success\":false,\"error\":\"reserve_ml: 1–10000 ml\"}");
+            return;
+        }
+        reserveMl = (uint32_t)v;
+    }
+
     TopOffConfig cfg = waterAlgorithm.getConfig();
     cfg.ema_alpha   = alpha;
     cfg.ema_clamp   = clamp;
@@ -764,15 +791,20 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     cfg.initial_ema = initEma;
     waterAlgorithm.setConfig(cfg);
 
+    if (reserveMl != getReserveConfigMl()) {
+        setReserveConfigMl(reserveMl);
+    }
+
     JsonDocument doc;
-    doc["success"]     = true;
-    doc["ema_alpha"]   = cfg.ema_alpha;
-    doc["ema_clamp"]   = cfg.ema_clamp;
-    doc["alarm_p1"]    = cfg.alarm_p1;
-    doc["alarm_p2"]    = cfg.alarm_p2;
-    doc["zone_green"]  = cfg.zone_green;
-    doc["zone_yellow"] = cfg.zone_yellow;
-    doc["initial_ema"] = cfg.initial_ema;
+    doc["success"]           = true;
+    doc["ema_alpha"]         = cfg.ema_alpha;
+    doc["ema_clamp"]         = cfg.ema_clamp;
+    doc["alarm_p1"]          = cfg.alarm_p1;
+    doc["alarm_p2"]          = cfg.alarm_p2;
+    doc["zone_green"]        = cfg.zone_green;
+    doc["zone_yellow"]       = cfg.zone_yellow;
+    doc["initial_ema"]       = cfg.initial_ema;
+    doc["reserve_config_ml"] = getReserveConfigMl();
     String resp; serializeJson(doc, resp);
     request->send(200, "application/json", resp);
 }

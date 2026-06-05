@@ -38,3 +38,10 @@ void updateBuzzerProvisioning() {
     uint32_t phase = millis() % 5000;
     digitalWrite(BUZZER_PIN, phase < 50 ? HIGH : LOW);
 }
+
+// Tick 50ms/5000ms — alarm rezerwy wody (identyczny wzorzec co provisioning).
+// Wywołuj w loop() gdy isReserveEmpty() == true.
+void updateBuzzerAlarm() {
+    uint32_t phase = millis() % 5000;
+    digitalWrite(BUZZER_PIN, phase < 50 ? HIGH : LOW);
+}

@@ -14,11 +14,6 @@
 #define LOGGING_TIME                 5  // s — czas fazy logowania po cyklu (bez błędu)
 
 // ============================================================
-// CZUJNIK DOSTĘPNOŚCI WODY (AVAILABLE_WATER_SENSOR_PIN)
-// ============================================================
-#define LOW_RESERVOIR_CRITICAL_COUNT  4
-
-// ============================================================
 // DOMYŚLNE WARTOŚCI KONFIGURACJI ALGORYTMU
 // ============================================================
 #define DEFAULT_DOSE_ML             150     // Stała dawka wody na jeden cykl [ml]

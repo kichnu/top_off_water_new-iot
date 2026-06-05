@@ -9,13 +9,14 @@
 #include "hardware/hardware_pins.h"
 #include "hardware/water_sensors.h"
 #include "hardware/pump_controller.h"
-#include "network/wifi_manager.h"
+#include "network/wifi_manager.h"!
 #include "security/auth_manager.h"
 #include "security/session_manager.h"
 #include "security/rate_limiter.h"
 #include "web/web_server.h"
 #include "algorithm/water_algorithm.h"
 #include "hardware/buzzer_controller.h"
+#include "hardware/reserve_controller.h"
 #include "provisioning/prov_detector.h"
 #include "provisioning/ap_core.h"
 #include "provisioning/ap_server.h"
@@ -118,6 +119,7 @@ void setup() {
     initNVS();          // initNVS() wywołuje initFRAM() wewnętrznie (config.cpp)
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
+    initReserveController();
     // I2C bus reset after burst ring-buffer reads — ensures clean state for credentials and RTC.
     Wire.end();
     delay(10);
@@ -233,11 +235,25 @@ void loop() {
     }
     
     // Sensor + algorytm — każdy cykl loop
+    updateReserveSensor();
     updateWaterSensor();
     waterAlgorithm.update();
+
     // Pozostałe systemy co 100 ms
     if (now - lastUpdate >= 100) {
         updatePumpController();
+
+        // Odejmij objętość po zatrzymaniu ręcznego pompowania
+        uint16_t directVol = getLastDirectPumpVolumeMl();
+        if (directVol > 0) {
+            subtractReserveMl(directVol);
+        }
+
+        // Alarm buzzer gdy rezerwa wyczerpana
+        if (isReserveEmpty()) {
+            updateBuzzerAlarm();
+        }
+
         updateSessionManager();
         updateRateLimiter();
         updateWiFi();

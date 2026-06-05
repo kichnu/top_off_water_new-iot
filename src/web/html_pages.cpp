@@ -889,6 +889,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         <label style="font-size:0.72rem;color:var(--text-muted);">Chart Y-Max ml/h (blank=auto)
                             <input type="number" id="algChartYMax" min="10" max="5000" step="10"
                                 placeholder="auto" style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Reserve Volume ml (1–10000)
+                            <input type="number" id="algReserveMl" min="1" max="10000" step="10"
+                                style="width:100%;margin-top:3px;"></label>
                     </div>
                     <div id="algSettingsError" style="display:none;color:#f87171;font-size:0.72rem;margin-top:8px;"></div>
                     <div style="display:flex;gap:8px;margin-top:10px;">
@@ -1307,32 +1310,39 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 .then((data) => {
                     if (!data) return;
                     
-                    // Low reservoir alarm badges
-                    const hasLowResError   = !!data.low_reservoir_error;
-                    const hasLowResWarning = !!data.low_reservoir_warning && !hasLowResError;
-                    const resCount         = data.low_reservoir_count || 0;
-                    const reservoirSep   = document.getElementById("reservoirSep");
-                    const reservoirBadge = document.getElementById("reservoirAlarmBadge");
-                    if (hasLowResError) {
+                    // Reserve alarm badges
+                    const hasSensorLow    = !!data.reserve_sensor_low;
+                    const hasReserveEmpty = !!data.reserve_empty;
+                    const needsReset      = !!data.reserve_needs_reset;
+                    const reserveMl       = data.reserve_ml !== undefined ? data.reserve_ml : '\u2014';
+                    const reservoirSep    = document.getElementById("reservoirSep");
+                    const reservoirBadge  = document.getElementById("reservoirAlarmBadge");
+                    if (hasReserveEmpty) {
                         reservoirSep.style.display   = '';
                         reservoirBadge.style.display = '';
                         reservoirBadge.className     = 'sub-danger';
-                        reservoirBadge.textContent   = '\u26a0 Reservoir empty \u2014 refill & reset';
-                    } else if (hasLowResWarning) {
+                        reservoirBadge.textContent   = '\u26a0 Reserve empty \u2014 refill & reset';
+                    } else if (hasSensorLow) {
                         reservoirSep.style.display   = '';
                         reservoirBadge.style.display = '';
                         reservoirBadge.className     = 'sub-warn';
-                        reservoirBadge.textContent   = '\u26a0 Low water reservoir (' + resCount + '/3)';
+                        reservoirBadge.textContent   = '\u26a0 Low reservoir \u2014 ' + reserveMl + ' ml remaining';
+                    } else if (needsReset) {
+                        reservoirSep.style.display   = '';
+                        reservoirBadge.style.display = '';
+                        reservoirBadge.className     = 'sub-warn';
+                        reservoirBadge.textContent   = '\u26a0 Reservoir refilled \u2014 press Cycle Reset';
                     } else {
                         reservoirSep.style.display   = 'none';
                         reservoirBadge.style.display = 'none';
                     }
+                    const hasLowResWarning = hasSensorLow || needsReset;
 
                     // Badges
                     updateSensorBadge("sensor1Badge", data.sensor_active);
                     updateSensorBadge("sensor2Badge", data.sensor_active);
                     updatePumpBadge("pumpBadge", data.pump_active, data.pump_attempt || 0);
-                    updateSystemBadge("systemBadge", data.system_error, data.system_disabled, hasLowResWarning);
+                    updateSystemBadge("systemBadge", data.system_error || hasReserveEmpty, data.system_disabled, hasLowResWarning);
 
                     // Process status
                     document.getElementById("processDescription").textContent = data.state_description || "IDLE - Waiting for sensors";
@@ -1752,6 +1762,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         document.getElementById('algZoneYellow').value= d.zone_yellow;
                         document.getElementById('algInitEma').value   = d.initial_ema;
                         document.getElementById('algChartYMax').value = chartYMaxOverride !== null ? chartYMaxOverride : '';
+                        if (d.reserve_config_ml) document.getElementById('algReserveMl').value = d.reserve_config_ml;
                     })
                     .catch(function(e) { console.error('alg-config GET error:', e); });
             }
@@ -1770,6 +1781,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var initEma = parseFloat(document.getElementById('algInitEma').value);
             var chartYMaxRaw = document.getElementById('algChartYMax').value.trim();
             var chartYMaxVal = chartYMaxRaw === '' ? NaN : parseFloat(chartYMaxRaw);
+            var reserveMl    = parseInt(document.getElementById('algReserveMl').value, 10);
 
             var err = '';
             if (isNaN(alpha)   || alpha < 0.05 || alpha > 0.50)        err = 'EMA Alpha: 0.05–0.50';
@@ -1780,6 +1792,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             else if (isNaN(zYellow) || zYellow <= zGreen || zYellow > 500) err = 'Zone Yellow: must be > Zone Green and ≤ 500';
             else if (isNaN(initEma) || initEma < 1 || initEma > 500)   err = 'Initial EMA: 1–500 ml/h';
             else if (!isNaN(chartYMaxVal) && (chartYMaxVal < 10 || chartYMaxVal > 5000)) err = 'Chart Y-Max: 10–5000 ml/h (or blank for auto)';
+            else if (isNaN(reserveMl) || reserveMl < 1 || reserveMl > 10000) err = 'Reserve Volume: 1–10000 ml';
 
             if (err) {
                 errEl.textContent = err;
@@ -1790,13 +1803,14 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var btn = document.getElementById('algSaveBtn');
             btn.disabled = true; btn.textContent = 'Saving...';
 
-            var body = 'ema_alpha='   + alpha   +
-                       '&ema_clamp='  + clamp   +
-                       '&alarm_p1='   + p1      +
-                       '&alarm_p2='   + p2      +
-                       '&zone_green=' + zGreen  +
-                       '&zone_yellow='+ zYellow +
-                       '&initial_ema='+ initEma;
+            var body = 'ema_alpha='    + alpha    +
+                       '&ema_clamp='   + clamp    +
+                       '&alarm_p1='    + p1       +
+                       '&alarm_p2='    + p2       +
+                       '&zone_green='  + zGreen   +
+                       '&zone_yellow=' + zYellow  +
+                       '&initial_ema=' + initEma  +
+                       '&reserve_ml='  + reserveMl;
 
             secureFetch('api/alg-config', {
                 method: 'POST',

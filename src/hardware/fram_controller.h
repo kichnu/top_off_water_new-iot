@@ -167,6 +167,12 @@ bool isTopOffRingBufferValid();    // false gdy count > TOPOFF_HISTORY_SIZE (leg
 bool saveEmaBlockToFRAM(const EmaBlock& ema);
 bool loadEmaBlockFromFRAM(EmaBlock& ema);
 
+// ===============================
+// RESERVE VOLUME (woda zapasowa)
+// ===============================
+bool saveReserveToFRAM(uint32_t configMl, uint32_t currentMl);
+bool loadReserveFromFRAM(uint32_t& configMl, uint32_t& currentMl);
+
 // Konfiguracja algorytmu
 bool saveTopOffConfigToFRAM(const TopOffConfig& cfg);
 bool loadTopOffConfigFromFRAM(TopOffConfig& cfg);

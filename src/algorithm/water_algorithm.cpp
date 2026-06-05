@@ -5,6 +5,7 @@
 #include "../hardware/hardware_pins.h"
 #include "../hardware/rtc_controller.h"
 #include "../hardware/fram_controller.h"
+#include "../hardware/reserve_controller.h"
 #include "../config/config.h"
 #include "algorithm_config.h"
 #include <math.h>
@@ -45,13 +46,10 @@ WaterAlgorithm::WaterAlgorithm() {
     alarmArmed = true;
     lastError  = ERROR_NONE;
 
-    lowReservoirCount = 0;
-
     systemWasDisabled = false;
     cycleLogged       = false;
 
     pinMode(RESET_PIN, INPUT_PULLUP);
-    pinMode(AVAILABLE_WATER_SENSOR_PIN, INPUT_PULLUP);
 
     LOG_INFO("WaterAlgorithm: constructor done");
 }
@@ -211,34 +209,7 @@ void WaterAlgorithm::onDebounceStart() {
 void WaterAlgorithm::onDebounceComplete() {
     if (currentState != STATE_DEBOUNCING) return;
     resetSensorProcess();
-    checkAvailableWaterSensor();
-    if (currentState == STATE_ERROR) return;
     startAutoPump();
-}
-
-// ============================================================
-// CZUJNIK DOSTĘPNOŚCI WODY
-// ============================================================
-
-void WaterAlgorithm::checkAvailableWaterSensor() {
-    bool sensorLow = (digitalRead(AVAILABLE_WATER_SENSOR_PIN) == LOW);
-
-    if (sensorLow) {
-        if (lowReservoirCount < 255) lowReservoirCount++;
-
-        if (lowReservoirCount >= LOW_RESERVOIR_CRITICAL_COUNT) {
-            LOG_WARNING("LOW RESERVOIR CRITICAL: count=%d → STATE_ERROR", lowReservoirCount);
-            startErrorSignal(ERROR_LOW_RESERVOIR);
-        } else {
-            LOG_WARNING("LOW RESERVOIR WARNING: count=%d/%d — system continues",
-                        lowReservoirCount, LOW_RESERVOIR_CRITICAL_COUNT - 1);
-        }
-    } else {
-        if (lowReservoirCount > 0) {
-            LOG_INFO("Available water sensor OK — alarm counter reset (%d → 0)", lowReservoirCount);
-        }
-        lowReservoirCount = 0;
-    }
 }
 
 void WaterAlgorithm::onDebounceReset() {
@@ -259,6 +230,12 @@ void WaterAlgorithm::startAutoPump() {
         currentState = STATE_IDLE;
         stateStartMs = millis();
         resetSensorProcess();
+        return;
+    }
+
+    if (isReserveEmpty()) {
+        LOG_WARNING("Reserve empty — auto pump blocked → STATE_ERROR");
+        startErrorSignal(ERROR_LOW_RESERVOIR);
         return;
     }
 
@@ -351,6 +328,8 @@ void WaterAlgorithm::finishPumpCycle() {
     saveTopOffRecord(record);
     saveEmaToFRAM();
     framBusy = false;
+
+    subtractReserveMl(config.dose_ml);
 
     rolling24hVolumeMl = scanRolling24h();
 
@@ -548,7 +527,7 @@ void WaterAlgorithm::checkResetButton() {
         wasPressed = true;
     } else if (!pressed && wasPressed) {
         wasPressed = false;
-        if (currentState == STATE_ERROR) {
+        if (currentState == STATE_ERROR && !isReserveSensorLow()) {
             resetFromError();
         }
     }

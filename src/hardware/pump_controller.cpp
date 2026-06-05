@@ -11,8 +11,9 @@ unsigned long pumpStartTime = 0;
 unsigned long pumpDuration = 0;
 String currentActionType = "";
 
-static bool pumpActive = false;
-static bool directPumpMode = false;
+static bool     pumpActive              = false;
+static bool     directPumpMode          = false;
+static uint16_t lastDirectPumpVolumeMl  = 0;
 
 void initPumpController() {
 
@@ -53,6 +54,7 @@ void updatePumpController() {
 
         if (directPumpMode) {
             directPumpMode = false;
+            lastDirectPumpVolumeMl = volumeML;
             LOG_INFO("");
             LOG_INFO("Direct pump safety timeout reached - pump stopped");
         }
@@ -150,13 +152,22 @@ void directPumpOff() {
         return;
     }
 
+    uint16_t actualDuration = (millis() - pumpStartTime) / 1000;
+    lastDirectPumpVolumeMl  = (uint16_t)round(actualDuration * currentPumpSettings.volumePerSecond);
+
     digitalWrite(ATO_PUMP_RELAY_PIN, HIGH);
-    pumpRunning = false;
+    pumpRunning    = false;
     directPumpMode = false;
     currentActionType = "";
 
     LOG_INFO("");
-    LOG_INFO("Direct pump stopped");
+    LOG_INFO("Direct pump stopped after %ds, ~%d ml", actualDuration, lastDirectPumpVolumeMl);
+}
+
+uint16_t getLastDirectPumpVolumeMl() {
+    uint16_t v = lastDirectPumpVolumeMl;
+    lastDirectPumpVolumeMl = 0;
+    return v;
 }
 
 bool isDirectPumpMode() {

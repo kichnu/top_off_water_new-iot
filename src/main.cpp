@@ -116,6 +116,9 @@ void setup() {
 
     delay(2000);
 
+    // RTC przed initFromFRAM — scanRolling24h() wymaga poprawnego getUnixTimestamp()
+    initializeRTC();
+
     initNVS();          // initNVS() wywołuje initFRAM() wewnętrznie (config.cpp)
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
@@ -136,7 +139,6 @@ void setup() {
         LOG_INFO("FALLBACK_MODE");
     }
     initWiFi();
-    initializeRTC();
     delay(2000);
 
     LOG_INFO("");

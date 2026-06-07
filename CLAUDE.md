@@ -49,6 +49,7 @@ crypto/             AES-256 encryption for FRAM credentials
   aes.*, sha256.*, fram_encryption.*
 
 hardware/           Hardware abstraction layer
+  buzzer_controller.*  Buzzer — FreeRTOS task (50ms tick), tryby: OFF/PROVISIONING/WARNING/ALARM
   fram_constants.h     Shared FRAM magic, version, field size constants
   fram_controller.*    FRAM memory management (all persistent data)
   hardware_pins.h      GPIO pin definitions

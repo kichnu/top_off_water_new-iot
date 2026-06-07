@@ -247,13 +247,15 @@ void loop() {
 
         // Odejmij objętość po zatrzymaniu ręcznego pompowania
         uint16_t directVol = getLastDirectPumpVolumeMl();
-        if (directVol > 0) {
+        if (directVol > 0 && isReserveSensorLow()) {
             subtractReserveMl(directVol);
         }
 
-        // Alarm buzzer gdy rezerwa wyczerpana
+        // Sygnały buzzer stanu rezerwy (wyższy priorytet wygrywa)
         if (isReserveEmpty()) {
             updateBuzzerAlarm();
+        } else if (isReserveSensorLow()) {
+            updateBuzzerWarning();
         }
 
         updateSessionManager();

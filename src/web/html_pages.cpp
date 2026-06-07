@@ -785,7 +785,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 <div class="status-main-body">
                     <div class="status-main-desc" id="processDescription">IDLE - Waiting for sensors</div>
                     <div class="status-main-sub">
-                        <span id="sensor1Badge" class="sub-off">Sensors: OFF</span>
+                        <span id="sensor1Badge" class="sub-off">Sensor: OFF</span>
                         <span class="sub-sep">•</span>
                         <span id="pumpBadge" class="sub-off">Pump: OFF</span>
                         <span class="sub-sep" id="reservoirSep" style="display:none">•</span>
@@ -1257,7 +1257,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
         function updateSensorBadge(badgeId, isActive) {
             const el = document.getElementById(badgeId);
             if (!el) return;
-            el.textContent = 'Sensors: ' + (isActive ? 'ON' : 'OFF');
+            el.textContent = 'Sensor: ' + (isActive ? 'ON' : 'OFF');
             el.className = isActive ? 'sub-on' : 'sub-off';
         }
 
@@ -1340,7 +1340,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
                     // Badges
                     updateSensorBadge("sensor1Badge", data.sensor_active);
-                    updateSensorBadge("sensor2Badge", data.sensor_active);
                     updatePumpBadge("pumpBadge", data.pump_active, data.pump_attempt || 0);
                     updateSystemBadge("systemBadge", data.system_error || hasReserveEmpty, data.system_disabled, hasLowResWarning);
 

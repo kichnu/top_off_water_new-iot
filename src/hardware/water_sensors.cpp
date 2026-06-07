@@ -3,6 +3,8 @@
 #include "../core/logging.h"
 #include "../algorithm/water_algorithm.h"
 #include "../algorithm/algorithm_config.h"
+#include "../config/config.h"
+#include "driver/gpio.h"
 
 // ============================================================
 // Stan wewnętrzny
@@ -16,6 +18,10 @@ static uint8_t     debounceCount = 0;   // licznik kolejnych LOW
 // Inicjalizacja
 // ============================================================
 void initWaterSensor() {
+    // GPIO 2 = JTAG MTDO on ESP32-C6: IO matrix stays wired to JTAG after boot,
+    // causing digitalRead() to return the JTAG state instead of the physical pin.
+    // gpio_reset_pin() disconnects the IO matrix before reconfiguring as INPUT_PULLUP.
+    gpio_reset_pin((gpio_num_t)WATER_SENSOR_PIN);
     pinMode(WATER_SENSOR_PIN, INPUT_PULLUP);
 
     currentPhase  = PHASE_IDLE;
@@ -54,6 +60,8 @@ void resetSensorProcess() {
 // Główna logika — wywoływana z loop()
 // ============================================================
 void updateWaterSensor() {
+    if (isSystemDisabled()) return;
+
     // Nie przetwarzaj gdy algorytm pompuje, loguje lub jest w błędzie
     AlgorithmState algState = waterAlgorithm.getState();
     if (algState == STATE_PUMPING  ||

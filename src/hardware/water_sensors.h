@@ -4,8 +4,9 @@
 #include <Arduino.h>
 
 // ============================================================
-// Czujniki pływakowe — para równoległa na jednym pinie (WATER_SENSOR_PIN).
-// Logika: LOW = woda poniżej poziomu (dowolny czujnik reaguje).
+// Czujnik pływakowy ATO (WATER_SENSOR_PIN).
+// Sprzętowo: dwa pływaki równolegle na jednym GPIO — redundancja sprzętowa.
+// Logika: LOW = woda poniżej poziomu.
 //
 // Debouncing: próbkowanie co DEBOUNCE_INTERVAL_MS,
 //             wymagane DEBOUNCE_COUNTER kolejnych LOW.

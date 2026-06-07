@@ -329,7 +329,7 @@ void WaterAlgorithm::finishPumpCycle() {
     saveEmaToFRAM();
     framBusy = false;
 
-    subtractReserveMl(config.dose_ml);
+    if (isReserveSensorLow()) subtractReserveMl(config.dose_ml);
 
     rolling24hVolumeMl = scanRolling24h();
 

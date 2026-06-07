@@ -1,55 +1,71 @@
 #include "buzzer_controller.h"
 #include "hardware_pins.h"
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
-static void beep(uint32_t ms) {
-    digitalWrite(BUZZER_PIN, LOW);
-    delay(ms);
-    digitalWrite(BUZZER_PIN, HIGH);
+static volatile BuzzerMode g_mode = BUZZER_OFF;
+static TaskHandle_t g_taskHandle = nullptr;
+
+static void buzzerTask(void*) {
+    TickType_t xLastWake = xTaskGetTickCount();
+    uint8_t tick = 0;
+
+    while (true) {
+        vTaskDelayUntil(&xLastWake, pdMS_TO_TICKS(BUZZER_TICK_MS));
+
+        bool on = false;
+        switch (g_mode) {
+            case BUZZER_PROVISIONING:
+            case BUZZER_WARNING:
+                on = (tick == 0);
+                break;
+            case BUZZER_ALARM:
+                on = (tick == 0) || (tick == BUZZER_ALARM_TICK2);
+                break;
+            default:
+                break;
+        }
+
+        digitalWrite(BUZZER_PIN, on ? LOW : HIGH);
+
+        if (++tick >= BUZZER_CYCLE_TICKS) tick = 0;
+    }
 }
 
 void initBuzzer() {
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, HIGH);  // HIGH = off (active LOW)
+    xTaskCreate(buzzerTask, "buzzer", 1024, nullptr, 1, &g_taskHandle);
+}
+
+void setBuzzerMode(BuzzerMode mode) {
+    g_mode = mode;
+}
+
+// ---- Blokujące sygnały bootowe ----
+
+static void beep(uint32_t ms) {
+    if (g_taskHandle) vTaskSuspend(g_taskHandle);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(ms);
+    digitalWrite(BUZZER_PIN, HIGH);
+    if (g_taskHandle) vTaskResume(g_taskHandle);
 }
 
 void buzzerPowerOn() {
     beep(1000);
 }
 
-// Narastający: krótki + długi = "ta-DAAA" = wszystko gra
 void buzzerOK() {
     beep(100);
     delay(150);
     beep(500);
 }
 
-// Natarczywa czwórka = "nie ignoruj tego" = błąd krytyczny
 void buzzerCritical() {
     for (int i = 0; i < 4; i++) {
         beep(250);
         if (i < 3) delay(100);
     }
-}
-
-// Pojedynczy tick 50ms co 5s — sygnalizuje aktywny tryb provisioning.
-// Wywołuj w każdej iteracji pętli provisioning.
-void updateBuzzerProvisioning() {
-    uint32_t phase = millis() % 5000;
-    digitalWrite(BUZZER_PIN, phase < 50 ? LOW : HIGH);
-}
-
-// Pojedynczy tick 50ms co 5s — ostrzeżenie niskiego stanu rezerwy.
-// Wywołuj w loop() gdy isReserveSensorLow() == true.
-void updateBuzzerWarning() {
-    uint32_t phase = millis() % 5000;
-    digitalWrite(BUZZER_PIN, phase < 50 ? LOW : HIGH);
-}
-
-// Podwójny tick (50ms ON, 100ms OFF, 50ms ON) co 5s — alarm pustej rezerwy.
-// Wywołuj w loop() gdy isReserveEmpty() == true.
-void updateBuzzerAlarm() {
-    uint32_t phase = millis() % 5000;
-    bool on = (phase < 50) || (phase >= 150 && phase < 200);
-    digitalWrite(BUZZER_PIN, on ? LOW : HIGH);
 }

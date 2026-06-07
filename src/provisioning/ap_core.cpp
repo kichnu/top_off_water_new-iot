@@ -114,7 +114,7 @@ void runProvisioningLoop() {
             lastStatusPrint = now;
         }
         
-        updateBuzzerProvisioning();
+        setBuzzerMode(BUZZER_PROVISIONING);
 
         // Small delay to prevent watchdog timeout
         delay(10);

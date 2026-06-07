@@ -251,11 +251,13 @@ void loop() {
             subtractReserveMl(directVol);
         }
 
-        // Sygnały buzzer stanu rezerwy (wyższy priorytet wygrywa)
+        // Tryb buzzera — wyższy priorytet wygrywa
         if (isReserveEmpty()) {
-            updateBuzzerAlarm();
+            setBuzzerMode(BUZZER_ALARM);
         } else if (isReserveSensorLow()) {
-            updateBuzzerWarning();
+            setBuzzerMode(BUZZER_WARNING);
+        } else {
+            setBuzzerMode(BUZZER_OFF);
         }
 
         updateSessionManager();

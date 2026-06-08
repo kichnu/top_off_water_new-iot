@@ -551,6 +551,16 @@ const char* DASHBOARD_HTML = R"rawliteral(
             margin-left: 10px;
         }
 
+        /* ===== ALG SETTINGS PANEL: Pump Calibration grid item ===== */
+        .alg-calib-item {
+            grid-column: span 2;
+        }
+        @media (max-width: 500px) {
+            .alg-calib-item {
+                grid-column: 1 / -1;
+            }
+        }
+
         /* ===== THIRD CARD: Statistics ===== */
         .stats-columns {
             display: grid;
@@ -892,6 +902,18 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         <label style="font-size:0.72rem;color:var(--text-muted);">Reserve Volume ml (1–10000)
                             <input type="number" id="algReserveMl" min="1" max="10000" step="10"
                                 style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Single Dose ml (1–2000)
+                            <input type="number" id="doseInput" min="1" max="2000" step="1"
+                                style="width:100%;margin-top:3px;"></label>
+                        <div class="alg-calib-item" style="display:flex;flex-direction:column;justify-content:flex-end;">
+                            <span style="font-size:0.72rem;color:var(--text-muted);text-align:center;display:block;margin-bottom:3px;">Pump Calibration</span>
+                            <div style="display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">
+                                <input type="text" id="calibrationSeconds" readonly
+                                    style="flex:1;min-width:0;text-align:center;background:var(--bg-primary);border:none;padding:10px 14px;font-size:0.8rem;color:var(--text-secondary);outline:none;font-family:'Courier New',monospace;">
+                                <button id="extendedBtn" class="btn btn-secondary btn-small" onclick="toggleAtoCalibration()"
+                                    style="flex:1;border:none;border-left:1px solid var(--border);border-radius:0;">Start</button>
+                            </div>
+                        </div>
                     </div>
                     <div id="algSettingsError" style="display:none;color:#f87171;font-size:0.72rem;margin-top:8px;"></div>
                     <div style="display:flex;gap:8px;margin-top:10px;">
@@ -903,51 +925,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
         </div>
 
                 <!-- THIRD CARD: Statistics -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-header-icon" style="background: rgba(234, 179, 8, 0.15);">
-                    <svg fill="currentColor" style="color: var(--accent-yellow);" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
-                </div>
-                <h2>System Setting</h2>
-            </div>
-
- 
-
-            <div class="stats-columns">
-
-                <!-- Single Dose -->
-                <div class="stat-column stat-col-dose" style="display:grid; grid-template-rows:1fr auto auto;">
-                    <div>
-                        <h3>Single Dose - Current Value</h3>
-                        <div class="input-group" style="margin-top: 8px;">
-                            <input type="number" id="doseInput" min="1" max="2000" step="1" placeholder="ml">
-                        </div>
-                    </div>
-                    <div class="stat-daily">
-                        <button class="btn btn-secondary btn-small" onclick="setDose()">Set</button>
-                    </div>
-                    <small style="visibility:hidden; margin-top:6px;">current: —</small>
-                </div>
-
-                <!-- Pump Calibration -->
-                <div class="stat-column" style="display:grid; grid-template-rows:1fr auto auto;">
-                    <div>
-                        <h3>Pump Calibration</h3>
-                        <div style="display:flex; gap:6px; margin-top:8px;">
-                            <input type="number" id="calibrationMl" min="1" max="3000" step="1" placeholder="ml" style="flex:1;min-width:0;">
-                            <input type="number" id="calibrationSeconds" min="0" max="3600" step="1" value="0" readonly style="flex:1;min-width:0;">
-                        </div>
-                    </div>
-                    <div class="stat-daily" style="gap:6px;">
-                        <button id="extendedBtn" class="btn btn-secondary btn-small" onclick="toggleAtoCalibration()" style="flex:1;">Calibration OFF</button>
-                        <button class="btn btn-secondary btn-small" onclick="updateVolumePerSecond()" style="flex:1;">Update Setting</button>
-                    </div>
-                    <small id="calibrationCurrent" style="color:#aaa; display:block; text-align:center; margin-top:6px;">current: —</small>
-                </div>
-
-            </div>
-
-        </div>
 
 
         <!-- Footer -->
@@ -1174,6 +1151,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         function toggleAtoCalibration() {
             const btn = document.getElementById("extendedBtn");
+            const dispEl = document.getElementById("calibrationSeconds");
             if (!calibrationActive) {
                 btn.disabled = true;
                 fetch("api/pump/calibration-on", { method: "POST" })
@@ -1182,11 +1160,11 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         if (data.success) {
                             calibrationActive  = true;
                             calibrationElapsed = 0;
-                            document.getElementById("calibrationSeconds").value = 0;
+                            if (dispEl) dispEl.value = "0 s";
                             updateAtoCalibBtn(true);
                             calibrationTimer = setInterval(() => {
                                 calibrationElapsed++;
-                                document.getElementById("calibrationSeconds").value = calibrationElapsed;
+                                if (dispEl) dispEl.value = calibrationElapsed + " s";
                             }, 1000);
                         }
                     })
@@ -1200,15 +1178,15 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 updateAtoCalibBtn(false);
                 fetch("api/pump/calibration-off", { method: "POST" })
                     .catch(e => console.error("Calibration stop error:", e))
-                    .finally(() => { btn.disabled = false; });
+                    .finally(() => { btn.disabled = false; loadVolumePerSecond(); });
             }
         }
 
         function updateAtoCalibBtn(isOn) {
             const btn = document.getElementById("extendedBtn");
             if (!btn) return;
-            btn.textContent = isOn ? "Calibration ON" : "Calibration OFF";
-            btn.className   = "btn btn-secondary btn-small";
+            btn.textContent = isOn ? "Stop" : "Start";
+            btn.className   = isOn ? "btn btn-primary btn-small" : "btn btn-secondary btn-small";
         }
 
         // ============================================
@@ -1220,20 +1198,19 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 .then(data => {
                     if (!data || !data.success) return;
                     const vps = parseFloat(data.volume_per_second);
-                    if (vps > 0) {
-                        const el = document.getElementById("calibrationCurrent");
-                        if (el) el.textContent = "current: " + vps.toFixed(2) + " ml/s";
+                    const el = document.getElementById("calibrationSeconds");
+                    if (el && !calibrationActive) {
+                        el.value = vps > 0 ? vps.toFixed(2) + " ml/s" : "—";
                     }
                 })
                 .catch(e => console.error("Failed to load pump settings:", e));
         }
 
         function updateVolumePerSecond() {
-            const ml  = parseInt(document.getElementById("calibrationMl").value, 10);
-            const sec = parseInt(document.getElementById("calibrationSeconds").value, 10);
+            const ml  = parseInt(document.getElementById("doseInput").value, 10);
+            const sec = calibrationElapsed;
 
-            if (isNaN(ml) || ml <= 0 || isNaN(sec) || sec <= 0) {
-                alert("Run calibration first: Mililiters and Seconds must both be greater than 0.");
+            if (isNaN(ml) || ml <= 0 || sec <= 0) {
                 return;
             }
 
@@ -1465,29 +1442,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     else console.error("Reset daily volume failed:", data && data.error);
                 })
                 .catch((e) => console.error("Reset daily volume error:", e));
-        }
-
-        // ============================================
-        // SET SINGLE DOSE
-        // ============================================
-        function setDose() {
-            const input = document.getElementById("doseInput");
-            const value = parseInt(input.value);
-            if (isNaN(value) || value < 1 || value > 2000) return;
-            if (!confirm("Set single dose to " + value + " ml?")) return;
-
-            secureFetch("api/set-dose", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: "value=" + value
-            })
-                .then((r) => { if (!r) return null; return r.json(); })
-                .then((data) => {
-                    if (!data) return;
-                    if (data.success) { loadDailyVolume(); }
-                    else console.error("Set dose failed:", data.error);
-                })
-                .catch((e) => console.error("Set dose error:", e));
         }
 
         // ============================================
@@ -1764,6 +1718,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         if (d.reserve_config_ml) document.getElementById('algReserveMl').value = d.reserve_config_ml;
                     })
                     .catch(function(e) { console.error('alg-config GET error:', e); });
+                loadVolumePerSecond();
             }
         }
 
@@ -1781,6 +1736,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var chartYMaxRaw = document.getElementById('algChartYMax').value.trim();
             var chartYMaxVal = chartYMaxRaw === '' ? NaN : parseFloat(chartYMaxRaw);
             var reserveMl    = parseInt(document.getElementById('algReserveMl').value, 10);
+            var dose         = parseInt(document.getElementById('doseInput').value, 10);
 
             var err = '';
             if (isNaN(alpha)   || alpha < 0.05 || alpha > 0.50)        err = 'EMA Alpha: 0.05–0.50';
@@ -1792,6 +1748,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             else if (isNaN(initEma) || initEma < 1 || initEma > 500)   err = 'Initial EMA: 1–500 ml/h';
             else if (!isNaN(chartYMaxVal) && (chartYMaxVal < 10 || chartYMaxVal > 5000)) err = 'Chart Y-Max: 10–5000 ml/h (or blank for auto)';
             else if (isNaN(reserveMl) || reserveMl < 1 || reserveMl > 10000) err = 'Reserve Volume: 1–10000 ml';
+            else if (isNaN(dose) || dose < 1 || dose > 2000)           err = 'Single Dose: 1–2000 ml';
 
             if (err) {
                 errEl.textContent = err;
@@ -1802,37 +1759,55 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var btn = document.getElementById('algSaveBtn');
             btn.disabled = true; btn.textContent = 'Saving...';
 
-            var body = 'ema_alpha='    + alpha    +
-                       '&ema_clamp='   + clamp    +
-                       '&alarm_p1='    + p1       +
-                       '&alarm_p2='    + p2       +
-                       '&zone_green='  + zGreen   +
-                       '&zone_yellow=' + zYellow  +
-                       '&initial_ema=' + initEma  +
-                       '&reserve_ml='  + reserveMl;
+            var algBody = 'ema_alpha='    + alpha    +
+                          '&ema_clamp='   + clamp    +
+                          '&alarm_p1='    + p1       +
+                          '&alarm_p2='    + p2       +
+                          '&zone_green='  + zGreen   +
+                          '&zone_yellow=' + zYellow  +
+                          '&initial_ema=' + initEma  +
+                          '&reserve_ml='  + reserveMl;
 
             secureFetch('api/alg-config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: body
+                body: algBody
+            })
+            .then(function(r) { return r ? r.json() : Promise.reject('no response'); })
+            .then(function(d) {
+                if (!d || !d.success) return Promise.reject((d && d.error) || 'Alg save failed');
+                chartYMaxOverride = isNaN(chartYMaxVal) ? null : chartYMaxVal;
+                return secureFetch('api/set-dose', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'value=' + dose
+                });
+            })
+            .then(function(r) { return r ? r.json() : Promise.reject('no response'); })
+            .then(function(d) {
+                if (!d || !d.success) return Promise.reject('Dose save failed');
+                loadDailyVolume();
+                if (calibrationElapsed > 0) {
+                    return secureFetch('api/pump-settings', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'volume_per_second=' + (dose / calibrationElapsed)
+                    });
+                }
+                return Promise.resolve(null);
             })
             .then(function(r) { return r ? r.json() : null; })
             .then(function(d) {
-                if (d && d.success) {
-                    // chart Y-max is RAM-only — store before closing panel
-                    chartYMaxOverride = isNaN(chartYMaxVal) ? null : chartYMaxVal;
-                    toggleAlgSettings();
-                    alert('Algorithm settings saved.');
-                } else {
-                    errEl.textContent = (d && d.error) ? d.error : 'Save failed';
-                    errEl.style.display = '';
-                }
+                if (d && d.success) loadVolumePerSecond();
+                btn.textContent = 'Saved';
+                setTimeout(function() { btn.textContent = 'Save'; }, 3000);
             })
             .catch(function(e) {
-                errEl.textContent = 'Network error';
+                var msg = typeof e === 'string' ? e : 'Network error';
+                errEl.textContent = msg;
                 errEl.style.display = '';
             })
-            .finally(function() { btn.disabled=false; btn.textContent='Save'; });
+            .finally(function() { btn.disabled = false; });
         }
 
         // ============================================

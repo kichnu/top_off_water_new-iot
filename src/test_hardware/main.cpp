@@ -142,6 +142,86 @@ static void testI2CScan() {
 }
 
 // ============================================================
+//  3b. I2C bit-bang scan — bypass hardware I2C peripheral
+//  Sterownie GPIO 20/21 przez digitalWrite (open-drain ręcznie)
+// ============================================================
+static bool g_bitbang_found = false;
+
+static void bb_sda_hi() { pinMode(PIN_I2C_SDA, INPUT); }
+static void bb_sda_lo() { pinMode(PIN_I2C_SDA, OUTPUT); digitalWrite(PIN_I2C_SDA, LOW); }
+static void bb_scl_hi() { pinMode(PIN_I2C_SCL, INPUT); }
+static void bb_scl_lo() { pinMode(PIN_I2C_SCL, OUTPUT); digitalWrite(PIN_I2C_SCL, LOW); }
+
+static void bb_start() {
+    bb_sda_hi(); bb_scl_hi(); delayMicroseconds(5);
+    bb_sda_lo();              delayMicroseconds(5);
+    bb_scl_lo();              delayMicroseconds(5);
+}
+static void bb_stop() {
+    bb_sda_lo();              delayMicroseconds(2);
+    bb_scl_hi();              delayMicroseconds(5);
+    bb_sda_hi();              delayMicroseconds(5);
+}
+// Wysyła bajt, zwraca true jeśli slave potwierdziło ACK (SDA=LOW)
+static bool bb_send(uint8_t data) {
+    for (int i = 7; i >= 0; i--) {
+        if (data & (1 << i)) bb_sda_hi(); else bb_sda_lo();
+        delayMicroseconds(2);
+        bb_scl_hi(); delayMicroseconds(5);
+        bb_scl_lo(); delayMicroseconds(5);
+    }
+    bb_sda_hi();             // zwolnij SDA dla ACK od slave
+    delayMicroseconds(2);
+    bb_scl_hi(); delayMicroseconds(5);
+    bool ack = (digitalRead(PIN_I2C_SDA) == LOW);
+    bb_scl_lo();
+    return ack;
+}
+
+static void testI2CBitBang() {
+    HEADER("3b. I2C bit-bang scan — GPIO sterowane ręcznie");
+    Serial.println("  (pomija hardware I2C peripheral, używa czystego digitalWrite)");
+
+    Wire.end();
+    delay(10);
+    gpio_reset_pin((gpio_num_t)PIN_I2C_SDA);
+    gpio_reset_pin((gpio_num_t)PIN_I2C_SCL);
+    bb_sda_hi(); bb_scl_hi();
+    delay(10);
+
+    int found = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        bb_start();
+        bool ack = bb_send((addr << 1) | 0);  // adres + write bit
+        bb_stop();
+        delayMicroseconds(100);
+
+        if (ack) {
+            const char* lbl = "";
+            if (addr == ADDR_DS3231) lbl = " ← DS3231 RTC";
+            if (addr == ADDR_FRAM)   lbl = " ← FRAM MB85RC";
+            Serial.printf("  BitBang: 0x%02X%s\n", addr, lbl);
+            found++;
+            g_bitbang_found = true;
+        }
+    }
+
+    // Przywróć Wire dla kolejnych testów
+    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+    Wire.setClock(100000);
+    delay(20);
+
+    Serial.println();
+    if (found == 0) {
+        tFAIL("I2C bit-bang", "brak urządzeń");
+        Serial.println("  ➜ HW fail + BitBang fail = GPIO 20/21 fizycznie uszkodzone lub brak okablowania");
+    } else {
+        tPASS("I2C bit-bang znalazł urządzenia!");
+        Serial.println("  ➜ HW fail + BitBang OK = hardware I2C peripheral uszkodzony, GPIO 20/21 sprawne");
+    }
+}
+
+// ============================================================
 //  4. DS3231 — odczyt czasu (surowe rejestry, bez biblioteki)
 // ============================================================
 static void testDS3231() {
@@ -286,6 +366,7 @@ void setup() {
     testGPIOOutput();
     testGPIOInput();
     testI2CScan();
+    testI2CBitBang();
     testDS3231();
     testFRAM();
     testWiFi();

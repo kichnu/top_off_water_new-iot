@@ -18,9 +18,7 @@ static uint8_t     debounceCount = 0;   // licznik kolejnych LOW
 // Inicjalizacja
 // ============================================================
 void initWaterSensor() {
-    // GPIO 2 = JTAG MTDO on ESP32-C6: IO matrix stays wired to JTAG after boot,
-    // causing digitalRead() to return the JTAG state instead of the physical pin.
-    // gpio_reset_pin() disconnects the IO matrix before reconfiguring as INPUT_PULLUP.
+    // gpio_reset_pin() clears any peripheral allocation (ADC, IO matrix) before INPUT_PULLUP
     gpio_reset_pin((gpio_num_t)WATER_SENSOR_PIN);
     pinMode(WATER_SENSOR_PIN, INPUT_PULLUP);
 

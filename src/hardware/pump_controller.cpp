@@ -26,7 +26,7 @@ void initPumpController() {
 }
 
 void updatePumpController() {
-    // Re-assert pin ownership every cycle — ESP32-C3 WiFi/ADC may reclaim GPIO2 (A0) via periman
+    // Re-assert pin ownership every cycle — ESP32 WiFi/ADC may reclaim GPIO via periman
     if (pumpRunning) {
         pinMode(ATO_PUMP_RELAY_PIN, OUTPUT);
     }

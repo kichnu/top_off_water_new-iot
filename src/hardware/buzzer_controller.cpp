@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include "driver/gpio.h"
 
 static volatile BuzzerMode g_mode = BUZZER_OFF;
 static TaskHandle_t g_taskHandle = nullptr;
@@ -34,6 +35,8 @@ static void buzzerTask(void*) {
 }
 
 void initBuzzer() {
+    // GPIO 7 = JTAG MTDO on ESP32-C3: gpio_reset_pin() disconnects IO matrix before pinMode
+    gpio_reset_pin((gpio_num_t)BUZZER_PIN);
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, HIGH);  // HIGH = off (active LOW)
     xTaskCreate(buzzerTask, "buzzer", 1024, nullptr, 1, &g_taskHandle);

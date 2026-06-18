@@ -13,7 +13,7 @@ static uint32_t g_sensorLowSince   = 0;      // millis() pierwszego raw-LOW; 0 =
 #define RESERVE_DEBOUNCE_MS  3000u
 
 void initReserveController() {
-    // GPIO reset przed pinMode — rozwiązuje problem z SDIO_DATA2 na ESP32-C6
+    // GPIO 6 = JTAG MTCK on ESP32-C3: gpio_reset_pin() disconnects IO matrix before INPUT_PULLUP
     gpio_reset_pin((gpio_num_t)AVAILABLE_WATER_SENSOR_PIN);
     pinMode(AVAILABLE_WATER_SENSOR_PIN, INPUT_PULLUP);
 

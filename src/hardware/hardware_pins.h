@@ -24,7 +24,7 @@
   //                               RESET_PIN  GPIO  5 ────┤ strap MTDI          ├──── GPIO 10  ATO_PUMP_RELAY_PIN
   //            AVAILABLE_WATER_SENSOR_PIN    GPIO  6 ────┤ JTAG MTCK           ├──── GPIO  9  (strap BOOT, wolny!)
   //                             BUZZER_PIN   GPIO  7 ────┤ JTAG MTDO           ├──── GPIO  8  (strap, wolny)
-  //                          I2C_SCL_PIN    GPIO 21 ────┤ UART TX             ├──── GPIO 20  I2C_SDA_PIN
+  //                           I2C_SCL_PIN    GPIO 21 ────┤ UART TX             ├──── GPIO 20  I2C_SDA_PIN
   //                                                      └─────────────────────┘
   //
   // ============================================================

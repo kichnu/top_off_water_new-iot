@@ -1,6 +1,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <ArduinoOTA.h>
 #include "core/logging.h"
 #include "config/config.h"
 #include "config/credentials_manager.h"
@@ -9,7 +10,7 @@
 #include "hardware/hardware_pins.h"
 #include "hardware/water_sensors.h"
 #include "hardware/pump_controller.h"
-#include "network/wifi_manager.h"!
+#include "network/wifi_manager.h"
 #include "security/auth_manager.h"
 #include "security/session_manager.h"
 #include "security/rate_limiter.h"
@@ -185,6 +186,27 @@ void setup() {
     if (isWiFiConnected()) {
         LOG_INFO("Dashboard: http://");
         LOG_INFO("%s", getLocalIP().toString());
+
+        ArduinoOTA.setPassword(OTA_PASSWORD);
+        ArduinoOTA.onStart([]() {
+            // KRYTYCZNE: wyłączyć pompę PRZED erase flash — erase blokuje CPU
+            // dłużej niż jeden tick, więc pompa zostawiona ON zostałaby ON
+            // przez cały czas trwania OTA.
+            LOG_INFO("OTA update starting — stopping pump and disabling system");
+            if (isPumpActive()) stopPump();
+            setSystemState(false);
+        });
+        ArduinoOTA.onEnd([]() {
+            LOG_INFO("OTA update complete — restarting");
+        });
+        ArduinoOTA.onError([](ota_error_t error) {
+            // OTA mogło zawieść z przyczyn niezwiązanych z crashem (zły hash,
+            // sieć) — urządzenie wtedy nie restartuje się samo.
+            LOG_ERROR("OTA error [%u] — re-enabling system", error);
+            setSystemState(true);
+        });
+        ArduinoOTA.begin();
+        LOG_INFO("OTA ready");
     }
     LOG_INFO("Current Time: %s", getCurrentTimestamp().c_str());
     LOG_INFO("=== System initialization complete ===");
@@ -236,6 +258,9 @@ void loop() {
         }
     }
     
+    // OTA — musi być wołane co iterację loop(), nie w wolniejszym ticku
+    ArduinoOTA.handle();
+
     // Sensor + algorytm — każdy cykl loop
     updateReserveSensor();
     updateWaterSensor();

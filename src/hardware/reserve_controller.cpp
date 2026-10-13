@@ -12,10 +12,11 @@ static uint32_t g_sensorLowSince   = 0;      // millis() pierwszego raw-LOW; 0 =
 
 #define RESERVE_DEBOUNCE_MS  3000u
 
+static bool readReserveSensorRawLow() { return false; }
+
 void initReserveController() {
-    // GPIO 6 = JTAG MTCK on ESP32-C3: gpio_reset_pin() disconnects IO matrix before INPUT_PULLUP
-    gpio_reset_pin((gpio_num_t)AVAILABLE_WATER_SENSOR_PIN);
-    pinMode(AVAILABLE_WATER_SENSOR_PIN, INPUT_PULLUP);
+    // Reservoir float sensor removed on the new PCB (VL53L4CD on I2C will replace it).
+    // Temporary stub: sensor always reads HIGH (water available).
 
     uint32_t cfg = 0, cur = 0;
     if (loadReserveFromFRAM(cfg, cur)) {
@@ -27,7 +28,7 @@ void initReserveController() {
         saveReserveToFRAM(g_reserveConfigMl, g_reserveMl);
     }
 
-    bool rawLow = (digitalRead(AVAILABLE_WATER_SENSOR_PIN) == LOW);
+    bool rawLow = readReserveSensorRawLow();
     g_sensorLowSince = rawLow ? (millis() | 1u) : 0u;
     g_sensorLow      = false;  // debounce nie potwierdzone przy init
 
@@ -36,7 +37,7 @@ void initReserveController() {
 }
 
 void updateReserveSensor() {
-    bool rawLow = (digitalRead(AVAILABLE_WATER_SENSOR_PIN) == LOW);
+    bool rawLow = readReserveSensorRawLow();
 
     if (rawLow) {
         if (g_sensorLowSince == 0)

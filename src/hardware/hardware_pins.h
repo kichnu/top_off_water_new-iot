@@ -14,32 +14,35 @@
   //    GPIO 9  — BOOT strap: LOW podczas boot → Download mode → NIE podłączać nic co może trzymać LOW
   //    GPIO 20 — UART0 RX;  wolny (USB-CDC na C3 nie używa UART0)
   //    GPIO 21 — UART0 TX;  wolny (USB-CDC na C3 nie używa UART0)
-  //
   //  I2C → GPIO 20 (SDA) + GPIO 21 (SCL): brak strap, brak boot-risk, najczystszy wybór
   //
   //                                                      ┌─────────────────────┐
-  //                              (strap VDD_SPI, wolny)  ├ GPIO  2             ├──── VBUS (5V)
-  //                        WATER_SENSOR_PIN  GPIO  3 ────┤ ADC1_CH3            ├──── GND
-  //                             (strap MTMS, wolny)      ├ GPIO  4             ├──── 3V3  (OUT)
-  //                               RESET_PIN  GPIO  5 ────┤ strap MTDI          ├──── GPIO 10  ATO_PUMP_RELAY_PIN
-  //            AVAILABLE_WATER_SENSOR_PIN    GPIO  6 ────┤ JTAG MTCK           ├──── GPIO  9  (strap BOOT, wolny!)
-  //                             BUZZER_PIN   GPIO  7 ────┤ JTAG MTDO           ├──── GPIO  8  (strap, wolny)
-  //                           I2C_SCL_PIN    GPIO 21 ────┤ UART TX             ├──── GPIO 20  I2C_SDA_PIN
+  //                              (strap VDD_SPI, wolny)  ├                     ├──── VBUS (5V)
+  //                        WATER_SENSOR_PIN  GPIO  3 ────┤                     ├──── GND
+  //                              RESET_PIN   GPIO  4 ----|                     |──── 3V3  (OUT)
+  //                             I2C_SDA_PIN  GPIO  5 ────┤                     ├──── GPIO 10  ATO_PUMP_RELAY_PIN
+  //                             I2C_SCL_PIN  GPIO  6 ────┤                     ├──── GPIO  9  (strap BOOT, wolny!)
+  //                             BUZZER_PIN   GPIO  7 ────┤                     ├──── GPIO  8  (strap, wolny)
+  //                                   WOLNY  GPIO 21 ────┤                     ├──── GPIO 20  WOLNY
   //                                                      └─────────────────────┘
   //
   // ============================================================
 
 // ============== TOP-OFF SYSTEM ==============
-#define ATO_PUMP_RELAY_PIN 10        // Pompa top-off (LOW = ON, active-LOW relay)
+#define ATO_PUMP_RELAY_PIN 10        // Top-off pump relay (active HIGH)
+#define PUMP_RELAY_ON  HIGH
+#define PUMP_RELAY_OFF LOW
 #define WATER_SENSOR_PIN 3           // Czujnik pływakowy (INPUT_PULLUP, active LOW)
-#define AVAILABLE_WATER_SENSOR_PIN 6 // Czujnik zbiornika wody (INPUT_PULLUP, active LOW)
+
 
 // ============== I2C (DS3231 RTC + FRAM MB85RC256V) ==============
-#define I2C_SDA_PIN 20
-#define I2C_SCL_PIN 21
+#define I2C_SDA_PIN 5
+#define I2C_SCL_PIN 6
 
 // ============== SYSTEM ==============
-#define RESET_PIN 5    // Przycisk resetu / provisioning (INPUT_PULLUP, active LOW)
-#define BUZZER_PIN 7   // Buzzer
+#define RESET_PIN 4    // Przycisk resetu / provisioning (INPUT_PULLUP, active LOW)
+#define BUZZER_PIN 7   // Buzzer (active HIGH)
+#define BUZZER_LEVEL_ON  HIGH
+#define BUZZER_LEVEL_OFF LOW
 
 #endif // HARDWARE_PINS_H

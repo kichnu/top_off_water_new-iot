@@ -18,7 +18,7 @@ static uint16_t lastDirectPumpVolumeMl  = 0;
 void initPumpController() {
 
     pinMode(ATO_PUMP_RELAY_PIN, OUTPUT);
-    digitalWrite(ATO_PUMP_RELAY_PIN, HIGH);
+    digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_OFF);
     
     pumpRunning = false;
     LOG_INFO("");
@@ -33,7 +33,7 @@ void updatePumpController() {
 
         // Check global pump state - stop if disabled (but not in direct mode)
     if (!pumpGlobalEnabled && pumpRunning && !directPumpMode) {
-        digitalWrite(ATO_PUMP_RELAY_PIN, HIGH);
+        digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_OFF);
         pumpRunning = false;
         LOG_INFO("");
         LOG_INFO("Pump stopped - globally disabled");
@@ -42,7 +42,7 @@ void updatePumpController() {
 
     if (pumpRunning && (millis() - pumpStartTime >= pumpDuration)) {
         // Stop pump and log event
-        digitalWrite(ATO_PUMP_RELAY_PIN, HIGH);
+        digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_OFF);
         pumpRunning = false;
 
         uint16_t actualDuration = (millis() - pumpStartTime) / 1000;
@@ -79,7 +79,7 @@ bool triggerPump(uint16_t durationSeconds, const String& actionType) {
         return false;
     }
     
-    digitalWrite(ATO_PUMP_RELAY_PIN, LOW);
+    digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_ON);
     pumpRunning = true;
     pumpStartTime = millis();
     pumpDuration = durationSeconds * 1000UL;
@@ -105,7 +105,7 @@ uint32_t getPumpRemainingTime() {
 
 void stopPump() {
     if (pumpRunning) {
-        digitalWrite(ATO_PUMP_RELAY_PIN, HIGH);
+        digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_OFF);
         pumpRunning = false;
 
         // Calculate actual duration and volume
@@ -136,7 +136,7 @@ bool directPumpOn(uint16_t durationSeconds) {
     }
 
     directPumpMode = true;
-    digitalWrite(ATO_PUMP_RELAY_PIN, LOW);
+    digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_ON);
     pumpRunning = true;
     pumpStartTime = millis();
     pumpDuration = durationSeconds * 1000UL;
@@ -155,7 +155,7 @@ void directPumpOff() {
     uint16_t actualDuration = (millis() - pumpStartTime) / 1000;
     lastDirectPumpVolumeMl  = (uint16_t)round(actualDuration * currentPumpSettings.volumePerSecond);
 
-    digitalWrite(ATO_PUMP_RELAY_PIN, HIGH);
+    digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_OFF);
     pumpRunning    = false;
     directPumpMode = false;
     currentActionType = "";

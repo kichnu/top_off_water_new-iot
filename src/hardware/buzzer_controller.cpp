@@ -28,7 +28,7 @@ static void buzzerTask(void*) {
                 break;
         }
 
-        digitalWrite(BUZZER_PIN, on ? LOW : HIGH);
+        digitalWrite(BUZZER_PIN, on ? BUZZER_LEVEL_ON : BUZZER_LEVEL_OFF);
 
         if (++tick >= BUZZER_CYCLE_TICKS) tick = 0;
     }
@@ -38,7 +38,7 @@ void initBuzzer() {
     // GPIO 7 = JTAG MTDO on ESP32-C3: gpio_reset_pin() disconnects IO matrix before pinMode
     gpio_reset_pin((gpio_num_t)BUZZER_PIN);
     pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, HIGH);  // HIGH = off (active LOW)
+    digitalWrite(BUZZER_PIN, BUZZER_LEVEL_OFF);
     xTaskCreate(buzzerTask, "buzzer", 1024, nullptr, 1, &g_taskHandle);
 }
 
@@ -50,9 +50,9 @@ void setBuzzerMode(BuzzerMode mode) {
 
 static void beep(uint32_t ms) {
     if (g_taskHandle) vTaskSuspend(g_taskHandle);
-    digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(BUZZER_PIN, BUZZER_LEVEL_ON);
     delay(ms);
-    digitalWrite(BUZZER_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, BUZZER_LEVEL_OFF);
     if (g_taskHandle) vTaskResume(g_taskHandle);
 }
 

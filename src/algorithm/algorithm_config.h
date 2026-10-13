@@ -5,8 +5,8 @@
 // ============================================================
 // DEBOUNCING CZUJNIKA WEJŚCIOWEGO
 // ============================================================
-#define DEBOUNCE_INTERVAL_MS     200   // ms między próbkowaniami
-#define DEBOUNCE_COUNTER           5   // kolejnych LOW wymaganych (= 1000 ms efektywnie)
+#define DEBOUNCE_INTERVAL_MS     1000   // ms między próbkowaniami
+#define DEBOUNCE_COUNTER           10   // kolejnych LOW wymaganych 
 
 // ============================================================
 // LOGGING

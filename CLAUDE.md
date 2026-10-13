@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-C6 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C6. Features single float sensor detection, second sensor for available-water reservoir, fixed-dose pump algorithm with EMA trend tracking, web dashboard, and captive portal provisioning.
+ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, second sensor for available-water reservoir, fixed-dose pump algorithm with EMA trend tracking, web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates. Full upload commands (serial + OTA): see `README`.
 
 ## Build Commands
 
 ```bash
-# Build and upload firmware
-pio run -e seeed_xiao_esp32c6 -t upload
+# Build and upload firmware (USB/serial)
+pio run -e seeed_xiao_esp32c3 -t upload
 
 # Monitor serial output (115200 baud)
 pio device monitor
 
 # Clean build
-pio run -e seeed_xiao_esp32c6 -t clean
+pio run -e seeed_xiao_esp32c3 -t clean
 
 # Full rebuild
-pio run -e seeed_xiao_esp32c6 -t clean && pio run -e seeed_xiao_esp32c6 -t upload
+pio run -e seeed_xiao_esp32c3 -t clean && pio run -e seeed_xiao_esp32c3 -t upload
 ```
 
 ## Architecture
@@ -28,7 +28,7 @@ pio run -e seeed_xiao_esp32c6 -t clean && pio run -e seeed_xiao_esp32c6 -t uploa
 
 `src/main.cpp` implements two runtime modes determined at boot:
 
-1. **Provisioning Mode** - Activated by holding reset button (GPIO 2) for 5+ seconds during boot. Starts WiFi AP with captive portal for initial credential setup.
+1. **Provisioning Mode** - Activated by holding reset button (GPIO 5) for 5+ seconds during boot. Starts WiFi AP with captive portal for initial credential setup.
 
 2. **Production Mode** - Normal operation with water algorithm, web server.
 
@@ -53,10 +53,10 @@ hardware/           Hardware abstraction layer
   fram_constants.h     Shared FRAM magic, version, field size constants
   fram_controller.*    FRAM memory management (all persistent data)
   hardware_pins.h      GPIO pin definitions
-  pump_controller.*    ATO pump relay control
+  pump_controller.*    ATO pump relay control (auto + direct/manual)
+  reserve_controller.* Source-water reserve tracking (ml), FRAM-persisted
   rtc_controller.*     DS3231 RTC with NTP sync
-  status_led.*         Status LED control
-  water_sensors.*      Float sensor debouncing (ATO + available-water)
+  water_sensors.*      Float sensor debouncing (ATO)
 
 network/            Network connectivity
   wifi_manager.*       WiFi connection with dynamic credentials
@@ -88,39 +88,45 @@ Located in `algorithm/water_algorithm.cpp`, states defined in `algorithm_config.
 
 ```
 STATE_IDLE → STATE_DEBOUNCING → STATE_PUMPING → STATE_LOGGING → STATE_IDLE
-STATE_PUMPING → (daily limit / red alert) → STATE_ERROR
-STATE_* → (direct pump on) → STATE_MANUAL_OVERRIDE
+Any state → (reserve empty / daily limit / red alert) → STATE_ERROR
 ```
 
+Direct/manual pump control (`/api/pump/direct-on`) bypasses this state machine
+entirely — separate code path in `pump_controller`, not a state of
+`WaterAlgorithm`.
+
 Key parameters in `algorithm_config.h`:
-- `DEBOUNCE_INTERVAL_MS` (200ms) + `DEBOUNCE_COUNTER` (5) = 1s effective debounce
+- `DEBOUNCE_INTERVAL_MS` (1000ms) + `DEBOUNCE_COUNTER` (10) = 10s effective debounce
 - `DEFAULT_DOSE_ML` (150ml) - fixed dose per cycle
 - `DEFAULT_DAILY_LIMIT_ML` (2000ml) - daily safety limit
-- `DEFAULT_MIN_BOOTSTRAP` (3) - cycles before EMA alerts activate
+- No bootstrap gate — the EMA alarm score accumulates from the first cycle (see `README`)
 
 ### FRAM Memory Layout
 
 Defined in `hardware/fram_controller.h`:
 - `0x0000-0x0017`: Magic number and version
 - `0x0018-0x0417`: Encrypted credentials (WiFi, admin password, device ID)
-- `0x0500+`: Water system data
-- `0x0560-0x0575`: TopOffConfig (20B + 2B checksum), magic=0xA7
-- `0x0580-0x0591`: EmaBlock (16B + 2B checksum)
+- `0x0500+`: Water system data (daily volume, reserve volume — see `README`)
+- `0x0560-0x0589`: TopOffConfig (40B + 2B checksum), magic=0xA8
+- `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 
-### Hardware Pin Configuration (Seeed Xiao ESP32-C6)
+### Hardware Pin Configuration (Seeed Xiao ESP32-C3)
 
-Defined in `hardware/hardware_pins.h`:
-- GPIO 0:  `WATER_SENSOR_PIN` — ATO float sensor (INPUT_PULLUP, active LOW)
-- GPIO 1:  `AVAILABLE_WATER_SENSOR_PIN` — reservoir level sensor (INPUT_PULLUP, active LOW)
-- GPIO 2:  `RESET_PIN` — provisioning button (INPUT_PULLUP, active LOW, hold 5s)
-- GPIO 18: `BUZZER_PIN` — buzzer (HIGH = ON)
-- GPIO 20: `STATUS_LED` — status LED
-- GPIO 21: `ATO_PUMP_RELAY_PIN` — ATO pump relay (**active LOW**: LOW = ON, HIGH = OFF)
-- GPIO 22: `I2C_SDA_PIN` — I2C bus (DS3231 RTC + FRAM MB85RC256V)
-- GPIO 23: `I2C_SCL_PIN` — I2C bus
+Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
+(2,3,4,5,6,7,8,9,10,20,21):
+- GPIO 3:  `WATER_SENSOR_PIN` — ATO float sensor (INPUT_PULLUP, active LOW)
+- GPIO 4:  `RESET_PIN` — provisioning button (INPUT_PULLUP, active LOW, hold 5s)
+- GPIO 5:  `I2C_SDA_PIN` — I2C bus (DS3231 RTC + FRAM MB85RC256V + VL53L4CD ToF)
+- GPIO 6:  `I2C_SCL_PIN` — I2C bus
+- GPIO 7:  `BUZZER_PIN` — buzzer (**active HIGH**)
+- GPIO 10: `ATO_PUMP_RELAY_PIN` — ATO pump relay (**active HIGH**: HIGH = ON, LOW = OFF)
+- Free: GPIO 2, 8, 9, 20, 21
 
-> Note: ATO pump relay is **active LOW** (LOW = ON, HIGH = OFF).
+> Note: output levels are defined as `PUMP_RELAY_ON/OFF` and `BUZZER_LEVEL_ON/OFF` in
+> `hardware_pins.h`. The reservoir float sensor was removed (new PCB); reserve
+> sensing is stubbed in `reserve_controller.cpp` until the VL53L4CD is integrated.
+> GPIO 9 is the BOOT strap pin (LOW during boot → download mode) — must stay unconnected.
 
 ### Key API Endpoints (Production Mode)
 
@@ -131,27 +137,28 @@ Authentication:
 
 System:
 - `GET  /api/status` — full system status JSON
-- `POST /api/system-toggle` — enable/disable system (30-min auto-re-enable)
+- `GET|POST /api/system-toggle` — enable/disable system (Service Mode auto-re-enables after 15 min)
 - `POST /api/system-reset` — reset ATO state machine
 
 ATO pump:
 - `POST /api/pump/direct-on` — manual pump on (bypass algorithm)
 - `POST /api/pump/direct-off` — manual pump off
 - `POST /api/pump/stop` — emergency stop
-- `GET|POST /api/pump-settings` — pump calibration (flow_rate, volume_per_second)
+- `GET|POST /api/pump-settings` — pump calibration (`volume_per_second`)
+- `POST /api/pump/calibration-on` / `POST /api/pump/calibration-off` — calibration pump run (bistable, 1h safety timeout)
 
 History/volumes:
 - `GET  /api/cycle-history` — ring buffer (60 records, newest-first)
 - `POST /api/clear-cycle-history`
 - `GET  /api/daily-volume` — rolling 24h stats
 - `POST /api/reset-daily-volume`
-- `GET  /api/available-volume`
-- `POST /api/set-available-volume`
-- `POST /api/refill-available-volume`
 - `GET  /api/fill-water-max` — daily_limit_ml and dose_ml
 - `POST /api/set-fill-water-max` — set daily_limit_ml
 - `POST /api/set-dose` — set dose_ml
+- `GET|POST /api/alg-config` — EMA/alarm-score parameters + `reserve_config_ml`
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
+
+Full parameter-level reference: see `README`.
 
 ### Dependencies (platformio.ini)
 
@@ -167,26 +174,26 @@ History/volumes:
 
 Credentials loaded at boot from AES-256 encrypted FRAM. Fallback hardcoded values exist if FRAM empty/corrupted. Access via macros in `config.h`:
 - `WIFI_SSID_DYNAMIC`, `WIFI_PASSWORD_DYNAMIC`
-- `ADMIN_PASSWORD_HASH_DYNAMIC`, `VPS_AUTH_TOKEN_DYNAMIC`
+- `ADMIN_PASSWORD_HASH_DYNAMIC`
 - `DEVICE_ID_DYNAMIC`
 
 ### System Disable/Enable
 
-Global system control with 30-minute auto-re-enable timeout. Functions in `config.h`:
+Boots in Service Mode (`systemDisabled = true`), auto-switches to Auto Mode after 15 minutes (`SERVICE_MODE_AUTO_ENABLE_MS`). Functions in `config.h`:
 - `setSystemState(bool enabled)`
 - `isSystemDisabled()`
-- `checkSystemAutoEnable()`
+- `checkServiceAutoEnable()`
 
-When system is disabled, WaterAlgorithm stops immediately.
+When system is disabled, WaterAlgorithm stops immediately (direct/manual pump control still works).
 
 ### POST Body Parameters
 
 ESPAsyncWebServer `request->hasParam("name", true)` only parses `application/x-www-form-urlencoded`.
 All POST handlers use form-encoded body — never JSON for POST requests.
 
-### 24-Hour Auto-Restart
+### Midnight Auto-Restart
 
-System automatically restarts after 24 hours uptime (`main.cpp`). ATO pump safely stopped before restart.
+System automatically restarts at the next local midnight (`main.cpp`, computed once at boot from RTC time; guarded by a 30-minute minimum uptime and a valid RTC year). ATO pump safely stopped before restart.
 
 ### Timezone Handling
 

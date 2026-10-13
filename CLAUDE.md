@@ -53,6 +53,7 @@ hardware/           Hardware abstraction layer
   fram_constants.h     Shared FRAM magic, version, field size constants
   fram_controller.*    FRAM memory management (all persistent data)
   hardware_pins.h      GPIO pin definitions
+  level_sensor.*       VL53L4CD ToF reservoir level — non-blocking sample series (diagnostics stage)
   pump_controller.*    ATO pump relay control (auto + direct/manual)
   reserve_controller.* Source-water reserve tracking (ml), FRAM-persisted
   rtc_controller.*     DS3231 RTC with NTP sync
@@ -167,6 +168,7 @@ Full parameter-level reference: see `README`.
 - ArduinoJson ^7.4.2
 - RTClib ^2.1.1 (Adafruit)
 - Adafruit FRAM I2C
+- VL53L4CD ^1.0.0 (Pololu)
 
 ## Important Patterns
 

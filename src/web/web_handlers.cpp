@@ -16,6 +16,7 @@
 #include "../config/credentials_manager.h"
 #include "../algorithm/water_algorithm.h"
 #include "../hardware/reserve_controller.h"
+#include "../hardware/level_sensor.h"
 
 void handleDashboard(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
@@ -172,6 +173,21 @@ void handleStatus(AsyncWebServerRequest* request) {
     json["reserve_config_ml"]   = getReserveConfigMl();
     json["reserve_low"]         = isReserveLow();
     json["reserve_empty"]       = isReserveEmpty();
+
+    // Reservoir level sensor (VL53L4CD) — diagnostics, not yet used by the algorithm
+    {
+        const LevelSeries& ls = getLastLevelSeries();
+        json["level_sensor"]      = getLevelSensorStateString();
+        json["level_valid"]       = ls.valid;
+        json["level_mm"]          = ls.distance_mm;
+        json["level_sd_mm"]       = ls.stddev_mm;
+        json["level_sem_mm"]      = ls.sem_mm;
+        json["level_n"]           = ls.samples;
+        json["level_rej"]         = ls.rejected;
+        json["level_signal_kcps"] = ls.signal_kcps;
+        json["level_ambient_kcps"]= ls.ambient_kcps;
+        json["level_age_s"]       = ls.finished_ms ? (long)((millis() - ls.finished_ms) / 1000) : -1L;
+    }
     json["rtc_ts"]            = (uint32_t)getUnixTimestamp();
 
     // ============================================

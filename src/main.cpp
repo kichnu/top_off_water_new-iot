@@ -18,6 +18,7 @@
 #include "algorithm/water_algorithm.h"
 #include "hardware/buzzer_controller.h"
 #include "hardware/reserve_controller.h"
+#include "hardware/level_sensor.h"
 #include "provisioning/prov_detector.h"
 #include "provisioning/ap_core.h"
 #include "provisioning/ap_server.h"
@@ -131,6 +132,7 @@ void setup() {
     Wire.setClock(100000);
     delay(10);
     framReconnect();
+    initLevelSensor();
 
     bool credentials_loaded = initCredentialsManager();
     LOG_INFO("");
@@ -263,6 +265,7 @@ void loop() {
 
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();
+    updateLevelSensor();
     waterAlgorithm.update();
 
     // Other systems every 100 ms

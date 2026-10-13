@@ -288,6 +288,7 @@ src/
     fram_controller.*       FRAM memory management, ring buffer, all persistent data
     fram_constants.h        Shared FRAM magic/version/field-size constants
     hardware_pins.h         GPIO pin definitions
+    level_sensor.*          VL53L4CD ToF reservoir level (non-blocking sample series)
     pump_controller.*       ATO pump relay control (auto + direct/manual)
     reserve_controller.*    Source-water reserve tracking (ml), FRAM-persisted
     rtc_controller.*        DS3231 RTC + NTP sync + internal fallback

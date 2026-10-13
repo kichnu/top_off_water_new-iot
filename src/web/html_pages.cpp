@@ -1288,9 +1288,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     if (!data) return;
                     
                     // Reserve alarm badges
-                    const hasSensorLow    = !!data.reserve_sensor_low;
+                    const hasReserveLow   = !!data.reserve_low;
                     const hasReserveEmpty = !!data.reserve_empty;
-                    const needsReset      = !!data.reserve_needs_reset;
                     const reserveMl       = data.reserve_ml !== undefined ? data.reserve_ml : '\u2014';
                     const reservoirSep    = document.getElementById("reservoirSep");
                     const reservoirBadge  = document.getElementById("reservoirAlarmBadge");
@@ -1299,21 +1298,16 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         reservoirBadge.style.display = '';
                         reservoirBadge.className     = 'sub-danger';
                         reservoirBadge.textContent   = '\u26a0 Reserve empty \u2014 refill & reset';
-                    } else if (hasSensorLow) {
+                    } else if (hasReserveLow) {
                         reservoirSep.style.display   = '';
                         reservoirBadge.style.display = '';
                         reservoirBadge.className     = 'sub-warn';
                         reservoirBadge.textContent   = '\u26a0 Low reservoir \u2014 ' + reserveMl + ' ml remaining';
-                    } else if (needsReset) {
-                        reservoirSep.style.display   = '';
-                        reservoirBadge.style.display = '';
-                        reservoirBadge.className     = 'sub-warn';
-                        reservoirBadge.textContent   = '\u26a0 Reservoir refilled \u2014 press Cycle Reset';
                     } else {
                         reservoirSep.style.display   = 'none';
                         reservoirBadge.style.display = 'none';
                     }
-                    const hasLowResWarning = hasSensorLow || needsReset;
+                    const hasLowResWarning = hasReserveLow;
 
                     // Badges
                     updateSensorBadge("sensor1Badge", data.sensor_active);

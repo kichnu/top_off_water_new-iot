@@ -261,25 +261,24 @@ void loop() {
     // OTA — musi być wołane co iterację loop(), nie w wolniejszym ticku
     ArduinoOTA.handle();
 
-    // Sensor + algorytm — każdy cykl loop
-    updateReserveSensor();
+    // Sensor + algorithm — every loop iteration
     updateWaterSensor();
     waterAlgorithm.update();
 
-    // Pozostałe systemy co 100 ms
+    // Other systems every 100 ms
     if (now - lastUpdate >= 100) {
         updatePumpController();
 
-        // Odejmij objętość po zatrzymaniu ręcznego pompowania
+        // Subtract volume after a manual pump run has stopped
         uint16_t directVol = getLastDirectPumpVolumeMl();
-        if (directVol > 0 && isReserveSensorLow()) {
+        if (directVol > 0) {
             subtractReserveMl(directVol);
         }
 
-        // Tryb buzzera — wyższy priorytet wygrywa
+        // Buzzer mode — higher priority wins
         if (isReserveEmpty()) {
             setBuzzerMode(BUZZER_ALARM);
-        } else if (isReserveSensorLow()) {
+        } else if (isReserveLow()) {
             setBuzzerMode(BUZZER_WARNING);
         } else {
             setBuzzerMode(BUZZER_OFF);

@@ -124,8 +124,8 @@ Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
 - Free: GPIO 2, 8, 9, 20, 21
 
 > Note: output levels are defined as `PUMP_RELAY_ON/OFF` and `BUZZER_LEVEL_ON/OFF` in
-> `hardware_pins.h`. The reservoir float sensor was removed (new PCB); reserve
-> sensing is stubbed in `reserve_controller.cpp` until the VL53L4CD is integrated.
+> `hardware_pins.h`. The reservoir float sensor was removed (new PCB, also from
+> code); reserve is a software ml counter in `reserve_controller.cpp` until the VL53L4CD is integrated.
 > GPIO 9 is the BOOT strap pin (LOW during boot → download mode) — must stay unconnected.
 
 ### Key API Endpoints (Production Mode)

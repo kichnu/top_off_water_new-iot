@@ -329,7 +329,7 @@ void WaterAlgorithm::finishPumpCycle() {
     saveEmaToFRAM();
     framBusy = false;
 
-    if (isReserveSensorLow()) subtractReserveMl(config.dose_ml);
+    subtractReserveMl(config.dose_ml);
 
     rolling24hVolumeMl = scanRolling24h();
 
@@ -527,7 +527,9 @@ void WaterAlgorithm::checkResetButton() {
         wasPressed = true;
     } else if (!pressed && wasPressed) {
         wasPressed = false;
-        if (currentState == STATE_ERROR && !isReserveSensorLow()) {
+        if (currentState == STATE_ERROR) {
+            // Button reset after a reserve-empty error = reservoir refilled
+            if (lastError == ERROR_LOW_RESERVOIR) clearReserveAlarm();
             resetFromError();
         }
     }

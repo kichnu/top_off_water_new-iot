@@ -170,9 +170,8 @@ void handleStatus(AsyncWebServerRequest* request) {
     // ============================================
     json["reserve_ml"]          = getReserveMl();
     json["reserve_config_ml"]   = getReserveConfigMl();
-    json["reserve_sensor_low"]  = isReserveSensorLow();
+    json["reserve_low"]         = isReserveLow();
     json["reserve_empty"]       = isReserveEmpty();
-    json["reserve_needs_reset"] = isReserveNeedsReset();
     json["rtc_ts"]            = (uint32_t)getUnixTimestamp();
 
     // ============================================
@@ -654,12 +653,6 @@ void handleClearCycleHistory(AsyncWebServerRequest* request) {
 void handleSystemReset(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
         request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-
-    if (isReserveSensorLow()) {
-        request->send(400, "application/json",
-            "{\"success\":false,\"error\":\"Cannot reset — reservoir sensor still active\"}");
         return;
     }
 

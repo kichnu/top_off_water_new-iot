@@ -3,35 +3,28 @@
 
 #include <Arduino.h>
 
-#define RESERVE_ML_DEFAULT   2000u   // ml — wartość gdy brak danych w FRAM
+#define RESERVE_ML_DEFAULT   2000u   // ml — used when FRAM holds no valid data
 #define RESERVE_ML_MIN          1u
 #define RESERVE_ML_MAX      10000u
+#define RESERVE_WARN_PCT       20u   // warning below this % of configured volume
 
-// Inicjalizacja — ładuje z FRAM, konfiguruje GPIO
+// Init — loads state from FRAM
 void initReserveController();
 
-// Odczyt czujnika — wywołuj w każdej iteracji loop()
-void updateReserveSensor();
-
-// Stan czujnika fizycznego (GPIO LOW = brak wody = warning żółte)
-bool isReserveSensorLow();
-
-// true gdy czujnik był LOW i wrócił do HIGH, ale użytkownik jeszcze nie nacisnął Cycle Reset
-bool isReserveNeedsReset();
-
-// Bieżący stan rezerwy
+// Current reserve state (software counter until the VL53L4CD level sensor is integrated)
 uint32_t getReserveMl();
 uint32_t getReserveConfigMl();
-bool     isReserveEmpty();   // currentMl == 0 → alarm czerwony, blokada pompy
+bool     isReserveLow();     // <= RESERVE_WARN_PCT and not empty → yellow warning
+bool     isReserveEmpty();   // currentMl == 0 → red alarm, pump blocked
 
-// Odejmuje ml po cyklu dolewania — klampuje do 0, zapisuje FRAM
+// Subtracts ml after a pump run — clamps to 0, saves to FRAM
 void subtractReserveMl(uint16_t ml);
 
-// Ustawia skonfigurowaną wartość rezerwy (i resetuje bieżącą do tej wartości)
+// Sets the configured reserve volume (and resets the current value to it)
 void setReserveConfigMl(uint32_t ml);
 
-// Reset alarmu — resetuje bieżącą do configMl i zapisuje FRAM.
-// Wywołaj po "Cycle Reset" (sprawdź wcześniej isReserveSensorLow() == false!).
+// Reservoir refilled — resets current to configMl and saves to FRAM.
+// Called on "Cycle Reset".
 void clearReserveAlarm();
 
 #endif // RESERVE_CONTROLLER_H

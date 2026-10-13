@@ -1,6 +1,6 @@
 # ESP32-C3 Automated Water Top-Off System
 
-Embedded system for automated aquarium water level management. Built on Seeed XIAO ESP32-C3 with PlatformIO/Arduino framework. Features a redundant float sensor pair for ATO detection, a second sensor for the source-water reservoir, a fixed-dose pumping algorithm with EMA rate tracking and a score-based alarm, buzzer feedback, a web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates.
+Embedded system for automated aquarium water level management. Built on Seeed XIAO ESP32-C3 with PlatformIO/Arduino framework. Features a redundant float sensor pair for ATO detection, source-water reservoir tracking (ToF level sensor pending), a fixed-dose pumping algorithm with EMA rate tracking and a score-based alarm, buzzer feedback, a web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates.
 
 ## Hardware
 
@@ -27,7 +27,7 @@ Non-blocking FreeRTOS task (`src/hardware/buzzer_controller.*`), ticking every 5
 |---|---|---|
 | `BUZZER_OFF` | silent | default |
 | `BUZZER_PROVISIONING` | tick 0 ON, 12s cycle | captive portal active |
-| `BUZZER_WARNING` | tick 0 ON, 12s cycle | reservoir sensor LOW |
+| `BUZZER_WARNING` | tick 0 ON, 12s cycle | reserve low (<= 20% of configured volume) |
 | `BUZZER_ALARM` | tick 0 + tick 3 ON, 12s cycle | reserve empty (0 ml) |
 
 Boot feedback: `buzzerPowerOn()` (1s tone at start of `setup()`), `buzzerOK()` (short+long — boot complete, all systems OK), `buzzerCritical()` (4× 250ms — critical boot error: FRAM init failed, WiFi/RTC not working, etc).
@@ -65,8 +65,8 @@ Any state → STATE_ERROR when:
   - reserve is empty (0 ml) at the moment an auto cycle would start
   - rolling 24h volume >= daily_limit_ml
   - alarm_score >= zone_yellow after a cycle (red alert)
-STATE_ERROR requires explicit Cycle Reset (web button); reset is rejected while
-the reservoir sensor is still LOW.
+STATE_ERROR requires explicit Cycle Reset (web button or reset button); Cycle
+Reset also marks the reservoir as refilled (reserve counter back to configured volume).
 
 Direct/manual pump control bypasses this state machine entirely (separate
 code path in pump_controller, ignores system-disable and daily limit).
@@ -88,8 +88,9 @@ All of the above (`ema_alpha`, `ema_clamp`, `alarm_p1`, `alarm_p2`, `zone_green`
 
 `src/hardware/reserve_controller.*` tracks remaining source water in ml, independent of the ATO algorithm's own state:
 - Configured capacity (`reserve_config_ml`, 1–10000 ml) and current remaining ml are persisted in FRAM.
-- Decremented by `dose_ml` after each auto cycle, and by the measured volume after a manual/direct pump session (while the reservoir sensor reads LOW).
-- Reservoir sensor LOW → `BUZZER_WARNING`, yellow dashboard badge ("Low reservoir — X ml remaining"); returning HIGH requires a Cycle Reset to clear the latch.
+- Decremented by `dose_ml` after each auto cycle, and by the computed volume after a manual/direct pump session.
+- Reserve at or below 20% of configured volume (`RESERVE_WARN_PCT`) → `BUZZER_WARNING`, yellow dashboard badge ("Low reservoir — X ml remaining").
+- The reservoir float sensor was removed; this is a pure software counter until the VL53L4CD level sensor is integrated (see `docs/RESERVE_LEVEL_SENSOR_VL53L4CD.md`).
 - Reserve reaching 0 ml → `BUZZER_ALARM`, red badge, blocks both auto and manual pump until refilled and reset.
 
 ## Safety

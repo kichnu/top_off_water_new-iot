@@ -3,6 +3,7 @@
 #include <VL53L4CD.h>
 #include <math.h>
 #include "../core/logging.h"
+#include "pump_controller.h"
 
 static VL53L4CD g_tof;
 
@@ -17,6 +18,10 @@ static bool     g_collecting     = false;
 static bool     g_skipFirst      = false;   // first sample after idle may be stale
 static uint32_t g_seriesStart    = 0;
 static uint32_t g_lastSeriesEnd  = 0;
+static bool     g_requested      = false;   // on-demand series — bypasses the quiet time
+static bool     g_pumpWasActive  = false;
+static bool     g_quiet          = false;   // inside LEVEL_PUMP_QUIET_MS after a pump stop
+static uint32_t g_pumpStopMs     = 0;
 static uint8_t  g_n              = 0;
 static uint8_t  g_rej            = 0;
 static double   g_sum            = 0;
@@ -49,6 +54,7 @@ static void startSeries() {
 
 static void finishSeries() {
     g_collecting     = false;
+    g_requested      = false;
     g_lastSeriesEnd  = millis();
 
     LevelSeries s = {};
@@ -118,6 +124,31 @@ void updateLevelSensor() {
         return;
     }
 
+    // Pumping disturbs the surface and the partitioned tank needs time to
+    // equalize — no series while the pump runs, no scheduled series during the
+    // quiet time after it stops (partial series dropped without logging)
+    if (isPumpActive()) {
+        g_collecting    = false;
+        g_requested     = false;
+        g_pumpWasActive = true;
+        g_lastSeriesEnd = now;
+        return;
+    }
+    if (g_pumpWasActive) {
+        g_pumpWasActive = false;
+        g_quiet         = true;
+        g_pumpStopMs    = now;
+    }
+    if (g_quiet) {
+        if (now - g_pumpStopMs >= LEVEL_PUMP_QUIET_MS) {
+            g_quiet = false;
+        } else if (!g_requested) {
+            g_collecting    = false;
+            g_lastSeriesEnd = now;
+            return;
+        }
+    }
+
     if (!g_collecting) {
         if (now - g_lastSeriesEnd >= LEVEL_SERIES_INTERVAL_MS) startSeries();
         return;
@@ -156,6 +187,7 @@ void updateLevelSensor() {
 
 void requestLevelSeries() {
     if (g_state == LEVEL_SENSOR_ABSENT) return;
+    g_requested = true;
     startSeries();
 }
 

@@ -13,6 +13,8 @@
 #define LEVEL_SERIES_TIMEOUT_MS     3000UL   // series closed with what it has after this
 #define LEVEL_INIT_RETRY_MS        30000UL   // retry init when the sensor is not detected
 #define LEVEL_FAULT_SERIES             3     // consecutive bad series → FAULT
+#define LEVEL_PUMP_QUIET_MS       120000UL   // no scheduled series this long after a pump stop
+                                             // (partitioned tank equalizes through a small hole)
 
 // Reservoir geometry — TEST: hardcoded until configurable (vertical walls assumed)
 #define LEVEL_TANK_LENGTH_MM         282.0f
@@ -49,7 +51,8 @@ LevelSensorState   getLevelSensorState();
 const char*        getLevelSensorStateString();
 const LevelSeries& getLastLevelSeries();   // last completed series (valid or not)
 
-// Start a series now (restarts one in progress); completion bumps the series counter
+// Start a series now (restarts one in progress, allowed in the post-pump quiet time);
+// completion bumps the series counter
 void     requestLevelSeries();
 uint32_t getLevelSeriesCount();            // number of completed series since boot
 

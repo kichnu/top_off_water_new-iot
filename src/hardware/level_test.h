@@ -10,7 +10,8 @@
 
 #define LEVEL_TEST_SETTLE_MS  LEVEL_PUMP_QUIET_MS  // wait after pump stop before measuring
 #define LEVEL_TEST_AFTER_SERIES           3     // series averaged for the "after" level
-#define LEVEL_TEST_BEFORE_MAX_AGE_MS  30000UL   // older "before" reading → run marked stale
+#define LEVEL_TEST_BEFORE_SERIES          5     // max latest between-runs series averaged for "before"
+#define LEVEL_TEST_BEFORE_MAX_AGE_MS  30000UL   // newest "before" series older → run marked stale
 
 // Call every loop() iteration (after updateLevelSensor())
 void updateLevelTest();

@@ -16,8 +16,16 @@ static LevelTestState g_ltState = LT_IDLE;
 static bool     g_wasDirect      = false;
 static uint16_t g_run            = 0;
 
-// "Before" — last valid series at pump start
+// Latest valid series taken between pump runs (cleared on every pump start)
+struct BeforeSample { float d; float sem; uint32_t ms; };
+static BeforeSample g_hist[LEVEL_TEST_BEFORE_SERIES];
+static uint8_t  g_histCount      = 0;   // valid entries
+static uint8_t  g_histNext       = 0;   // ring write index
+static bool     g_wasPumping     = false;
+
+// "Before" — mean of g_hist at direct pump start
 static bool     g_beforeOk       = false;
+static uint8_t  g_beforeN        = 0;
 static float    g_dBefore        = 0;
 static float    g_semBefore      = 0;
 static uint32_t g_beforeAgeMs    = 0;
@@ -42,17 +50,23 @@ static void onPumpStart() {
     g_run++;
     g_ltState = LT_PUMPING;
 
-    const LevelSeries& s = getLastLevelSeries();
-    g_beforeOk    = s.valid;
-    g_dBefore     = s.distance_mm;
-    g_semBefore   = s.sem_mm;
-    g_beforeAgeMs = millis() - s.finished_ms;
-    if (!s.valid) {
+    g_beforeN  = g_histCount;
+    g_beforeOk = g_histCount > 0;
+    if (!g_beforeOk) {
         LOG_WARNING("LVLTEST run %u: no valid 'before' reading", g_run);
-    } else {
-        LOG_INFO("LVLTEST run %u: before %.1f mm (level %.1f mm, age %lu s)",
-                 g_run, g_dBefore, levelMm(g_dBefore), g_beforeAgeMs / 1000);
+        return;
     }
+    double sum = 0, semSq = 0;
+    for (uint8_t i = 0; i < g_histCount; i++) {
+        sum   += g_hist[i].d;
+        semSq += (double)g_hist[i].sem * g_hist[i].sem;
+    }
+    uint8_t newest = (g_histNext + LEVEL_TEST_BEFORE_SERIES - 1) % LEVEL_TEST_BEFORE_SERIES;
+    g_dBefore     = (float)(sum / g_histCount);
+    g_semBefore   = (float)(sqrt(semSq) / g_histCount);   // SEM of the mean
+    g_beforeAgeMs = millis() - g_hist[newest].ms;
+    LOG_INFO("LVLTEST run %u: before %.1f mm (level %.1f mm, %u series, newest %lu s old)",
+             g_run, g_dBefore, levelMm(g_dBefore), g_beforeN, g_beforeAgeMs / 1000);
 }
 
 static void onPumpStop() {
@@ -81,23 +95,41 @@ static void finishRun() {
     float semMl    = sqrt(g_semBefore * g_semBefore + semAfter * semAfter) * LEVEL_ML_PER_MM;
 
     LOG_INFO("LVLTEST,run=%u,pump_s=%.2f,pump_ml=%.0f,d_before=%.1f,d_after=%.1f,"
-             "level_after=%.1f,before_age_s=%lu,after_n=%u,sensor_ml=%.0f,sem_ml=%.0f,"
+             "level_after=%.1f,before_age_s=%lu,before_n=%u,after_n=%u,sensor_ml=%.0f,sem_ml=%.0f,"
              "diff_ml=%.0f,diff_pct=%.1f",
              g_run, g_pumpS, g_pumpMl, g_dBefore, dAfter,
-             levelMm(dAfter), g_beforeAgeMs / 1000, g_afterValid, sensorMl, semMl,
+             levelMm(dAfter), g_beforeAgeMs / 1000, g_beforeN, g_afterValid, sensorMl, semMl,
              diffMl, diffPct);
     if (g_beforeAgeMs > LEVEL_TEST_BEFORE_MAX_AGE_MS) {
         LOG_WARNING("LVLTEST run %u: 'before' reading is stale (%lu s)", g_run, g_beforeAgeMs / 1000);
     }
 }
 
+static void histAdd(const LevelSeries& s) {
+    g_hist[g_histNext] = { s.distance_mm, s.sem_mm, s.finished_ms };
+    g_histNext = (g_histNext + 1) % LEVEL_TEST_BEFORE_SERIES;
+    if (g_histCount < LEVEL_TEST_BEFORE_SERIES) g_histCount++;
+}
+
 void updateLevelTest() {
+    uint32_t count = getLevelSeriesCount();
+
+    // Any pump run (manual or algorithm) invalidates the between-runs history.
+    // Series aren't taken while pumping nor in the quiet time after, so every
+    // series completed outside a pump run is a settled reading.
+    bool pumping = isPumpActive();
+    if (pumping && !g_wasPumping) {
+        if (isDirectPumpMode()) onPumpStart();   // uses the history before clearing it
+        g_histCount = g_histNext = 0;
+    }
+    g_wasPumping = pumping;
+    if (!pumping && count != g_seriesSeen && getLastLevelSeries().valid) {
+        histAdd(getLastLevelSeries());
+    }
+
     bool direct = isDirectPumpMode();
-    if (direct && !g_wasDirect) onPumpStart();
     if (!direct && g_wasDirect && g_ltState == LT_PUMPING) onPumpStop();
     g_wasDirect = direct;
-
-    uint32_t count = getLevelSeriesCount();
 
     switch (g_ltState) {
         case LT_SETTLING:

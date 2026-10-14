@@ -3,6 +3,7 @@
 #include "level_sensor.h"
 #include "pump_controller.h"
 #include "../config/config.h"
+#include "../config/reservoir_config.h"
 #include "../core/logging.h"
 
 enum LevelTestState : uint8_t {
@@ -41,7 +42,9 @@ static uint8_t  g_afterValid     = 0;
 static double   g_dAfterSum      = 0;
 static double   g_semAfterSqSum  = 0;
 
-static float levelMm(float distanceMm) { return LEVEL_SENSOR_TO_BOTTOM_MM - distanceMm; }
+static float levelMm(float distanceMm) {
+    return getReservoirConfig().sensor_to_bottom_mm - distanceMm;
+}
 
 static void onPumpStart() {
     if (g_ltState == LT_SETTLING || g_ltState == LT_MEASURING) {
@@ -89,10 +92,10 @@ static void finishRun() {
 
     float dAfter   = (float)(g_dAfterSum / g_afterValid);
     float semAfter = (float)(sqrt(g_semAfterSqSum) / g_afterValid);   // SEM of the mean
-    float sensorMl = (dAfter - g_dBefore) * LEVEL_ML_PER_MM;          // level drop → ml
+    float sensorMl = (dAfter - g_dBefore) * reservoirMlPerMm();          // level drop → ml
     float diffMl   = sensorMl - g_pumpMl;
     float diffPct  = (g_pumpMl > 0) ? diffMl * 100.0f / g_pumpMl : 0.0f;
-    float semMl    = sqrt(g_semBefore * g_semBefore + semAfter * semAfter) * LEVEL_ML_PER_MM;
+    float semMl    = sqrt(g_semBefore * g_semBefore + semAfter * semAfter) * reservoirMlPerMm();
 
     LOG_INFO("LVLTEST,run=%u,pump_s=%.2f,pump_ml=%.0f,d_before=%.1f,d_after=%.1f,"
              "level_after=%.1f,before_age_s=%lu,before_n=%u,after_n=%u,sensor_ml=%.0f,sem_ml=%.0f,"

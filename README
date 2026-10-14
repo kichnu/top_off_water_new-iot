@@ -176,6 +176,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
 | POST | `/api/set-dose` | Set single dose volume |
 | GET/POST | `/api/alg-config` | Get/set EMA + alarm-score parameters and `reserve_config_ml` |
+| GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`), `marker_tol_mm`, `portion_pause_s`, `level_alarms`; returns derived `ml_per_mm`, `capacity_ml`, `portions` |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |
 
@@ -300,6 +301,7 @@ src/
   config/
     config.*                Global settings, system enable/disable, trusted proxy
     credentials_manager.*   Dynamic credential loading from FRAM
+    reservoir_config.*      Reservoir geometry + level-sensor settings (FRAM)
   core/                     Logging utilities
   crypto/                   AES-256 + SHA-256 for FRAM credential encryption
   hardware/
@@ -330,6 +332,7 @@ Defined in `src/hardware/fram_controller.h` (unified layout, shared with the cre
   0x0520–0x0529   Reserve volume: configured max + current ml + checksum
   0x0560–0x0589   TopOffConfig (40 bytes + 2B checksum, magic 0xA8)
   0x0590–0x05A1   EmaBlock (16 bytes + 2B checksum)
+  0x05A2–0x05C3   ReservoirConfig (32 bytes + 2B checksum, magic 0xB3)
   0x0600–0x0603   Top-off ring buffer count + write pointer
   0x0610–0x0AC0   Top-off ring buffer (60 × TopOffRecord, 20 bytes each)
 ```

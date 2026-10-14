@@ -42,6 +42,7 @@ algorithm/          Water dosing algorithm
 config/             Configuration and credential management
   config.*             Global settings, system enable/disable
   credentials_manager.*  Dynamic credential loading from FRAM
+  reservoir_config.*     Reservoir geometry + level-sensor settings (FRAM)
 
 core/               Logging utilities (Serial + read-only TCP log mirror, port 23)
 
@@ -110,6 +111,7 @@ Defined in `hardware/fram_controller.h`:
 - `0x0500+`: Water system data (daily volume, reserve volume — see `README`)
 - `0x0560-0x0589`: TopOffConfig (40B + 2B checksum), magic=0xA8
 - `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
+- `0x05A2-0x05C3`: ReservoirConfig (32B + 2B checksum), magic=0xB3
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 
 ### Hardware Pin Configuration (Seeed Xiao ESP32-C3)
@@ -157,6 +159,7 @@ History/volumes:
 - `POST /api/set-fill-water-max` — set daily_limit_ml
 - `POST /api/set-dose` — set dose_ml
 - `GET|POST /api/alg-config` — EMA/alarm-score parameters + `reserve_config_ml`
+- `GET|POST /api/reserve-config` — reservoir geometry, marker tolerance, portion pause, level alarms
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 
 Full parameter-level reference: see `README`.

@@ -20,6 +20,7 @@
 #include "hardware/reserve_controller.h"
 #include "hardware/level_sensor.h"
 #include "hardware/level_test.h"
+#include "config/reservoir_config.h"
 #include "provisioning/prov_detector.h"
 #include "provisioning/ap_core.h"
 #include "provisioning/ap_server.h"
@@ -126,6 +127,7 @@ void setup() {
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
     initReserveController();
+    initReservoirConfig();
     // I2C bus reset after burst ring-buffer reads — ensures clean state for credentials and RTC.
     Wire.end();
     delay(10);

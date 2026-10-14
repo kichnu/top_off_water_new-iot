@@ -17,6 +17,7 @@
 #include "../algorithm/water_algorithm.h"
 #include "../hardware/reserve_controller.h"
 #include "../hardware/level_sensor.h"
+#include "../config/reservoir_config.h"
 
 void handleDashboard(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
@@ -818,3 +819,79 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     request->send(200, "application/json", resp);
 }
 
+
+// ===============================
+// RESERVOIR CONFIG HANDLER
+// GET  — geometry, level-sensor settings and derived values
+// POST — validates and saves (form-encoded; missing fields keep current values)
+// ===============================
+
+static void sendReserveConfig(AsyncWebServerRequest* request) {
+    const ReservoirConfig& c = getReservoirConfig();
+    uint16_t dose = waterAlgorithm.getConfig().dose_ml;
+    uint32_t cap  = reservoirCapacityMl();
+
+    JsonDocument doc;
+    doc["success"]             = true;
+    doc["saved"]               = isReservoirConfigSaved();
+    doc["length_mm"]           = c.length_mm;
+    doc["width_mm"]            = c.width_mm;
+    doc["sensor_to_bottom_mm"] = c.sensor_to_bottom_mm;
+    doc["marker_level_mm"]     = c.marker_level_mm;
+    doc["marker_tol_mm"]       = c.marker_tol_mm;
+    doc["portion_pause_s"]     = c.portion_pause_s;
+    doc["level_alarms"]        = levelAlarmsEnabled();
+    doc["ml_per_mm"]           = reservoirMlPerMm();
+    doc["capacity_ml"]         = cap;
+    doc["dose_ml"]             = dose;
+    doc["portions"]            = dose ? cap / dose : 0;
+    doc["low_pct"]             = RESERVE_LOW_PCT_FIXED;
+    doc["empty_pct"]           = RESERVE_EMPTY_PCT_FIXED;
+    const char* warn = reservoirConfigWarning(c);
+    if (warn) doc["warning"] = warn;
+    String resp; serializeJson(doc, resp);
+    request->send(200, "application/json", resp);
+}
+
+void handleReserveConfig(AsyncWebServerRequest* request) {
+    if (!checkAuthentication(request)) {
+        request->send(401, "text/plain", "Unauthorized");
+        return;
+    }
+
+    if (request->method() == HTTP_POST) {
+        ReservoirConfig c = getReservoirConfig();
+        auto getI = [&](const char* name, long def) -> long {
+            return request->hasParam(name, true)
+                ? request->getParam(name, true)->value().toInt()
+                : def;
+        };
+        // Clamp to the field width before validation so overflow can't wrap into range
+        auto u16 = [](long v) -> uint16_t { return (uint16_t)constrain(v, 0L, 65535L); };
+        auto u8  = [](long v) -> uint8_t  { return (uint8_t)constrain(v, 0L, 255L); };
+
+        c.length_mm           = u16(getI("length_mm",           c.length_mm));
+        c.width_mm            = u16(getI("width_mm",            c.width_mm));
+        c.sensor_to_bottom_mm = u16(getI("sensor_to_bottom_mm", c.sensor_to_bottom_mm));
+        c.marker_level_mm     = u16(getI("marker_level_mm",     c.marker_level_mm));
+        c.marker_tol_mm       = u8(getI("marker_tol_mm",        c.marker_tol_mm));
+        c.portion_pause_s     = u8(getI("portion_pause_s",      c.portion_pause_s));
+        if (request->hasParam("level_alarms", true)) {
+            bool on = getI("level_alarms", 1) != 0;
+            c.flags = on ? (c.flags | RESERVOIR_FLAG_LEVEL_ALARMS)
+                         : (c.flags & ~RESERVOIR_FLAG_LEVEL_ALARMS);
+        }
+
+        const char* err = setReservoirConfig(c);
+        if (err) {
+            JsonDocument doc;
+            doc["success"] = false;
+            doc["error"]   = err;
+            String resp; serializeJson(doc, resp);
+            request->send(400, "application/json", resp);
+            return;
+        }
+    }
+
+    sendReserveConfig(request);
+}

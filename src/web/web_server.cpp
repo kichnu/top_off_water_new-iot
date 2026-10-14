@@ -50,6 +50,7 @@ void initWebServer() {
 
     // Algorithm config (EMA alpha/clamp, P1/P2, zone thresholds, initial EMA)
     server.on("/api/alg-config", HTTP_GET | HTTP_POST, handleAlgConfig);
+    server.on("/api/reserve-config", HTTP_GET | HTTP_POST, handleReserveConfig);
 
     // Health check endpoint (no session required)
     server.on("/api/health", HTTP_GET, handleHealth);

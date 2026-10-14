@@ -920,6 +920,36 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         <button class="btn btn-primary btn-small" onclick="saveAlgSettings()" id="algSaveBtn">Save</button>
                         <button class="btn btn-secondary btn-small" onclick="toggleAlgSettings()">Cancel</button>
                     </div>
+
+                    <div style="font-size:0.68rem;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;text-transform:uppercase;margin:16px 0 10px;padding-top:12px;border-top:1px solid var(--border);">Reservoir &amp; Level Sensor</div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 14px;">
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Length mm (50–2000)
+                            <input type="number" id="resLength" min="50" max="2000" step="1"
+                                style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Width mm (50–2000)
+                            <input type="number" id="resWidth" min="50" max="2000" step="1"
+                                style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Sensor &rarr; bottom mm (70–1200)
+                            <input type="number" id="resSensorBottom" min="70" max="1200" step="1"
+                                style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Marker level mm (from bottom)
+                            <input type="number" id="resMarker" min="20" max="1150" step="1"
+                                style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Marker tolerance &plusmn;mm (1–30)
+                            <input type="number" id="resTol" min="1" max="30" step="1"
+                                style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);">Pause between portions s (15–120)
+                            <input type="number" id="resPause" min="15" max="120" step="1"
+                                style="width:100%;margin-top:3px;"></label>
+                        <label style="font-size:0.72rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="resAlarms"> Level alarms (GUI/display/buzzer)</label>
+                    </div>
+                    <div id="resDerived" style="font-size:0.72rem;color:var(--text-secondary);margin-top:8px;"></div>
+                    <div id="resWarning" style="display:none;color:#fbbf24;font-size:0.72rem;margin-top:6px;"></div>
+                    <div id="resError" style="display:none;color:#f87171;font-size:0.72rem;margin-top:6px;"></div>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                        <button class="btn btn-primary btn-small" onclick="saveReserveConfig()" id="resSaveBtn">Save reservoir</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1713,7 +1743,75 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     })
                     .catch(function(e) { console.error('alg-config GET error:', e); });
                 loadVolumePerSecond();
+                loadReserveConfig();
             }
+        }
+
+        // ============================================
+        // RESERVOIR & LEVEL SENSOR SETTINGS
+        // ============================================
+        function showReserveConfig(d) {
+            document.getElementById('resLength').value       = d.length_mm;
+            document.getElementById('resWidth').value        = d.width_mm;
+            document.getElementById('resSensorBottom').value = d.sensor_to_bottom_mm;
+            document.getElementById('resMarker').value       = d.marker_level_mm;
+            document.getElementById('resTol').value          = d.marker_tol_mm;
+            document.getElementById('resPause').value        = d.portion_pause_s;
+            document.getElementById('resAlarms').checked     = !!d.level_alarms;
+            document.getElementById('resDerived').textContent =
+                (d.saved ? '' : 'Defaults (not saved yet) \u2014 ') +
+                d.ml_per_mm.toFixed(1) + ' ml/mm \u2022 capacity ' + (d.capacity_ml / 1000).toFixed(2) + ' l' +
+                ' \u2022 ' + d.portions + ' portions of ' + d.dose_ml + ' ml' +
+                ' \u2022 low < ' + d.low_pct + '%, empty < ' + d.empty_pct + '%';
+            var w = document.getElementById('resWarning');
+            w.textContent = d.warning || '';
+            w.style.display = d.warning ? '' : 'none';
+        }
+
+        function loadReserveConfig() {
+            secureFetch('api/reserve-config')
+                .then(function(r) { return r ? r.json() : null; })
+                .then(function(d) { if (d && d.success) showReserveConfig(d); })
+                .catch(function(e) { console.error('reserve-config GET error:', e); });
+        }
+
+        function saveReserveConfig() {
+            var errEl = document.getElementById('resError');
+            errEl.style.display = 'none';
+            var v = function(id) { return parseInt(document.getElementById(id).value, 10); };
+            var len = v('resLength'), wid = v('resWidth'), bottom = v('resSensorBottom');
+            var marker = v('resMarker'), tol = v('resTol'), pause = v('resPause');
+
+            var err = '';
+            if (isNaN(len) || len < 50 || len > 2000 || isNaN(wid) || wid < 50 || wid > 2000) err = 'Length/width: 50\u20132000 mm';
+            else if (isNaN(bottom) || bottom < 70 || bottom > 1200)   err = 'Sensor \u2192 bottom: 70\u20131200 mm';
+            else if (isNaN(marker) || marker < 20 || marker > bottom - 50) err = 'Marker level: 20 mm \u2026 (sensor \u2192 bottom \u2212 50 mm)';
+            else if (isNaN(tol) || tol < 1 || tol > 30)              err = 'Marker tolerance: 1\u201330 mm';
+            else if (isNaN(pause) || pause < 15 || pause > 120)      err = 'Pause between portions: 15\u2013120 s';
+            if (err) { errEl.textContent = err; errEl.style.display = ''; return; }
+
+            var btn = document.getElementById('resSaveBtn');
+            btn.disabled = true; btn.textContent = 'Saving...';
+            secureFetch('api/reserve-config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: 'length_mm=' + len + '&width_mm=' + wid + '&sensor_to_bottom_mm=' + bottom +
+                      '&marker_level_mm=' + marker + '&marker_tol_mm=' + tol + '&portion_pause_s=' + pause +
+                      '&level_alarms=' + (document.getElementById('resAlarms').checked ? 1 : 0)
+            })
+            .then(function(r) { return r ? r.json() : Promise.reject('no response'); })
+            .then(function(d) {
+                if (!d || !d.success) return Promise.reject((d && d.error) || 'Save failed');
+                showReserveConfig(d);
+                btn.textContent = 'Saved';
+                setTimeout(function() { btn.textContent = 'Save reservoir'; }, 3000);
+            })
+            .catch(function(e) {
+                errEl.textContent = typeof e === 'string' ? e : 'Network error';
+                errEl.style.display = '';
+                btn.textContent = 'Save reservoir';
+            })
+            .finally(function() { btn.disabled = false; });
         }
 
         function saveAlgSettings() {

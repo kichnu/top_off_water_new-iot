@@ -91,6 +91,10 @@ struct PumpCycle {
 #define FRAM_ADDR_EMA_BLOCK         0x0590   // 16 bytes — EmaBlock struct (0x0590–0x059F)
 #define FRAM_ADDR_EMA_CHKSUM        0x05A0   // 2 bytes — checksum EMA
 
+// Reservoir geometry and level-sensor settings (ReservoirConfig) — 32 bytes
+#define FRAM_ADDR_RESERVOIR_CFG     0x05A2   // 32 bytes — ReservoirConfig struct (0x05A2–0x05C1)
+#define FRAM_ADDR_RESERVOIR_CHKSUM  0x05C2   // 2 bytes — checksum (free after it: 0x05C4–0x05FF)
+
 // Ring buffer rekordów dolewek (TopOffRecord, 20 bajtów każdy)
 #define TOPOFF_HISTORY_SIZE         60       // Maksymalnie 60 rekordów (60×20=1200 bajtów)
 #define FRAM_TOPOFF_RECORD_SIZE     20       // sizeof(TopOffRecord) — weryfikowane static_assert
@@ -154,6 +158,7 @@ bool loadFillWaterMaxFromFRAM(uint16_t& fillWaterMax);
 struct TopOffRecord;
 struct EmaBlock;
 struct TopOffConfig;
+struct ReservoirConfig;
 
 // Ring buffer rekordów dolewek
 bool saveTopOffRecord(const TopOffRecord& record);
@@ -176,6 +181,10 @@ bool loadReserveFromFRAM(uint32_t& configMl, uint32_t& currentMl);
 // Konfiguracja algorytmu
 bool saveTopOffConfigToFRAM(const TopOffConfig& cfg);
 bool loadTopOffConfigFromFRAM(TopOffConfig& cfg);
+
+// Reservoir geometry and level-sensor settings
+bool saveReservoirConfigToFRAM(const ReservoirConfig& cfg);
+bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg);
 
 // ===============================
 // FRAM CREDENTIALS SECTION

@@ -16,12 +16,10 @@
 #define LEVEL_PUMP_QUIET_MS       120000UL   // no scheduled series this long after a pump stop
                                              // (partitioned tank equalizes through a small hole)
 
-// Reservoir geometry — TEST: hardcoded until configurable (vertical walls assumed)
-#define LEVEL_TANK_LENGTH_MM         282.0f
-#define LEVEL_TANK_WIDTH_MM          202.0f
-#define LEVEL_SENSOR_TO_BOTTOM_MM    470.0f  // sensor face → reservoir bottom
-#define LEVEL_TANK_MAX_LEVEL_MM      380.0f  // max water level above the bottom
-#define LEVEL_ML_PER_MM  (LEVEL_TANK_LENGTH_MM * LEVEL_TANK_WIDTH_MM / 1000.0f)
+// VL53L4CD limits used to validate the reservoir geometry (datasheet DS13812)
+#define LEVEL_MAX_RANGE_MM           1200    // max ranging distance
+#define LEVEL_MIN_CLEARANCE_MM         50    // min sensor → water surface at the marker
+#define LEVEL_FOV_DEG                  18    // detection volume (full angle) at 1 m
 
 enum LevelSensorState : uint8_t {
     LEVEL_SENSOR_ABSENT = 0,   // no ACK / init failed

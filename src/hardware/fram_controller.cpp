@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <Adafruit_FRAM_I2C.h>
 #include "../algorithm/algorithm_config.h"
+#include "../config/reservoir_config.h"
 #include "rtc_controller.h"
 
 #include "../crypto/fram_encryption.h"
@@ -1006,6 +1007,35 @@ bool loadTopOffConfigFromFRAM(TopOffConfig& cfg) {
         return false;
     }
 
+    cfg = tmp;
+    return true;
+}
+
+// ===============================
+// RESERVOIR CONFIG
+// ===============================
+
+bool saveReservoirConfigToFRAM(const ReservoirConfig& cfg) {
+    if (!framInitialized) return false;
+
+    fram.write(FRAM_ADDR_RESERVOIR_CFG, (uint8_t*)&cfg, sizeof(ReservoirConfig));
+    uint16_t chksum = calculateChecksum((uint8_t*)&cfg, sizeof(ReservoirConfig));
+    fram.write(FRAM_ADDR_RESERVOIR_CHKSUM, (uint8_t*)&chksum, 2);
+    return true;
+}
+
+bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg) {
+    if (!framInitialized) return false;
+
+    ReservoirConfig tmp;
+    fram.read(FRAM_ADDR_RESERVOIR_CFG, (uint8_t*)&tmp, sizeof(ReservoirConfig));
+    uint16_t stored = 0;
+    fram.read(FRAM_ADDR_RESERVOIR_CHKSUM, (uint8_t*)&stored, 2);
+
+    if (tmp.magic != RESERVOIR_CONFIG_MAGIC ||
+        calculateChecksum((uint8_t*)&tmp, sizeof(ReservoirConfig)) != stored) {
+        return false;
+    }
     cfg = tmp;
     return true;
 }

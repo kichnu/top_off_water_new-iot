@@ -231,13 +231,27 @@ Passwords with shell-special characters (`#`, `$`, space) — always single-quot
 OTA_PASSWORD='we6#example' pio run -e seeed_xiao_esp32c3_ota -t upload --upload-port=<device-ip>
 ```
 
+Log monitor over WiFi (read-only TCP mirror of the serial log, port 23):
+
+```bash
+pio device monitor --port socket://<device-ip>:23
+# or
+nc <device-ip> 23
+```
+
+On connect the client first receives the last ~4 KB of buffered log (from
+after WiFi start — boot-time credential lines are never buffered), then live
+output. One client at a time; a new connection replaces the previous one.
+There is no authentication — anyone on the LAN can read the log. After an OTA
+upload the device reboots and the connection drops; reconnect once it is back.
+
 Notes:
 - If the device is on a separate subnet/VLAN (IoT isolation), a temporary
   firewall rule may be needed: after authenticating, `espota` needs the
   device to connect *back* to this computer on `--host_port` (8266).
-- Diagnosing a crash during OTA always requires a physical USB serial
-  monitor running in parallel — the WiFi log socket does not capture panic
-  output.
+- Diagnosing a crash (also during OTA) always requires a physical USB serial
+  monitor — the WiFi log only carries `LOG_*` output, not panic/backtrace or
+  raw `Serial.print` / ESP-IDF `log_x` messages.
 - On `ArduinoOTA.onStart()`, the firmware stops the ATO pump and disables
   the system before the flash erase (which blocks the CPU for several
   seconds) — see `src/main.cpp`.

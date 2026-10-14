@@ -210,6 +210,8 @@ void setup() {
         ArduinoOTA.begin();
         LOG_INFO("OTA ready");
     }
+    // Listens regardless of WiFi state — accepts clients once WiFi (re)connects
+    startNetworkLog();
     LOG_INFO("Current Time: %s", getCurrentTimestamp().c_str());
     LOG_INFO("=== System initialization complete ===");
     LOG_INFO("====================================");
@@ -262,6 +264,7 @@ void loop() {
     
     // OTA — musi być wołane co iterację loop(), nie w wolniejszym ticku
     ArduinoOTA.handle();
+    handleNetworkLog();
 
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();

@@ -5,6 +5,10 @@
 #include "../config/config.h"
 
 void initLogging();
+
+// Read-only TCP log mirror (port 23) — start once WiFi is up, handle in loop()
+void startNetworkLog();
+void handleNetworkLog();
 void logInfo(const char* format, ...);
 void logWarning(const char* format, ...);
 void logError(const char* format, ...);

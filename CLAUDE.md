@@ -43,7 +43,7 @@ config/             Configuration and credential management
   config.*             Global settings, system enable/disable
   credentials_manager.*  Dynamic credential loading from FRAM
 
-core/               Logging utilities
+core/               Logging utilities (Serial + read-only TCP log mirror, port 23)
 
 crypto/             AES-256 encryption for FRAM credentials
   aes.*, sha256.*, fram_encryption.*

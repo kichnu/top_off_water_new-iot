@@ -10,6 +10,7 @@ static LevelSensorState g_state         = LEVEL_SENSOR_ABSENT;
 static uint32_t         g_lastInitTry   = 0;
 static uint8_t          g_badSeries     = 0;
 static LevelSeries      g_last          = {};
+static uint32_t         g_seriesCount   = 0;
 
 // Running series accumulator
 static bool     g_collecting     = false;
@@ -67,6 +68,7 @@ static void finishSeries() {
         s.ambient_kcps = (uint16_t)(g_sumAmbient / g_n);
     }
     g_last = s;
+    g_seriesCount++;
 
     if (s.valid) {
         g_badSeries = 0;
@@ -151,6 +153,13 @@ void updateLevelSensor() {
 
     if (g_n >= LEVEL_SAMPLES_PER_SERIES) finishSeries();
 }
+
+void requestLevelSeries() {
+    if (g_state == LEVEL_SENSOR_ABSENT) return;
+    startSeries();
+}
+
+uint32_t getLevelSeriesCount() { return g_seriesCount; }
 
 LevelSensorState   getLevelSensorState() { return g_state; }
 const LevelSeries& getLastLevelSeries()  { return g_last; }

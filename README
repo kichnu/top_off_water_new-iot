@@ -237,6 +237,9 @@ Log monitor over WiFi (read-only TCP mirror of the serial log, port 23):
 pio device monitor --port socket://<device-ip>:23
 # or
 nc <device-ip> 23
+
+# Save to logs/device-monitor-<date>.log (git-ignored), with PC timestamps
+pio device monitor --port socket://<device-ip>:23 --filter time --filter log2file
 ```
 
 On connect the client first receives the last ~4 KB of buffered log (from

@@ -14,6 +14,13 @@
 #define LEVEL_INIT_RETRY_MS        30000UL   // retry init when the sensor is not detected
 #define LEVEL_FAULT_SERIES             3     // consecutive bad series → FAULT
 
+// Reservoir geometry — TEST: hardcoded until configurable (vertical walls assumed)
+#define LEVEL_TANK_LENGTH_MM         282.0f
+#define LEVEL_TANK_WIDTH_MM          202.0f
+#define LEVEL_SENSOR_TO_BOTTOM_MM    470.0f  // sensor face → reservoir bottom
+#define LEVEL_TANK_MAX_LEVEL_MM      380.0f  // max water level above the bottom
+#define LEVEL_ML_PER_MM  (LEVEL_TANK_LENGTH_MM * LEVEL_TANK_WIDTH_MM / 1000.0f)
+
 enum LevelSensorState : uint8_t {
     LEVEL_SENSOR_ABSENT = 0,   // no ACK / init failed
     LEVEL_SENSOR_OK     = 1,
@@ -41,5 +48,9 @@ void updateLevelSensor();
 LevelSensorState   getLevelSensorState();
 const char*        getLevelSensorStateString();
 const LevelSeries& getLastLevelSeries();   // last completed series (valid or not)
+
+// Start a series now (restarts one in progress); completion bumps the series counter
+void     requestLevelSeries();
+uint32_t getLevelSeriesCount();            // number of completed series since boot
 
 #endif // LEVEL_SENSOR_H

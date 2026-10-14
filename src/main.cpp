@@ -19,6 +19,7 @@
 #include "hardware/buzzer_controller.h"
 #include "hardware/reserve_controller.h"
 #include "hardware/level_sensor.h"
+#include "hardware/level_test.h"
 #include "provisioning/prov_detector.h"
 #include "provisioning/ap_core.h"
 #include "provisioning/ap_server.h"
@@ -269,6 +270,7 @@ void loop() {
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();
     updateLevelSensor();
+    updateLevelTest();
     waterAlgorithm.update();
 
     // Other systems every 100 ms

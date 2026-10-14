@@ -176,7 +176,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
 | POST | `/api/set-dose` | Set single dose volume |
 | GET/POST | `/api/alg-config` | Get/set EMA + alarm-score parameters and `reserve_config_ml` |
-| GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`), `marker_tol_mm`, `portion_pause_s`, `level_alarms`; returns derived `ml_per_mm`, `capacity_ml`, `portions` |
+| GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`), `marker_tol_mm`, `portion_pause_s`, `use_level_sensor`; returns derived `ml_per_mm`, `capacity_ml`, `portions` |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |
 

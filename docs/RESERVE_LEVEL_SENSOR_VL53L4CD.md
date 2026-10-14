@@ -133,14 +133,18 @@ Ustalone:
 - Walidacja wymiarów w Settings uwzględnia parametry czujnika (zasięg, minimalny prześwit,
   stożek pola widzenia).
 - Tolerancja przy znaczniku: Settings ±1–30 mm, domyślnie ±5 mm.
-- Settings: wyłącznik alarmów czujnika poziomu (GUI / display / buzzer) — pomiary i funkcje
-  działają dalej, żeby nie zaburzać algorytmu.
+- Settings: przełącznik „czujnik poziomu” — wyłączony = tryb bez czujnika: rezerwa liczona
+  porcjami (pojemność − porcje), reset do pełna po dolaniu; czujnik dalej mierzy, ale nie
+  generuje alarmów; pompa stop + alarm już przy 30% (furtka na pracę bez czujnika).
 - Porcje ręczne nie liczą się do limitu dobowego (nadal w ml), ale odejmują się z rezerwy.
+- Kolejka porcji ręcznych: max 20 (kolejne kliknięcia ignorowane bez komunikatu); kolejka
+  przerywana, gdy rezerwa osiągnie próg stopu (5% z czujnikiem, 30% bez).
+- Buzzer: jeden wzorzec — obecny `BUZZER_ALARM` (2 piknięcia 50 ms z przerwą 100 ms,
+  co 12 s).
 
 Otwarte:
-- Wyłączone alarmy czujnika: czy blokada pompy przy „brak” (< 5%) też jest wyłączona?
-- Buzzer: zdarzenia, wzorzec, wyciszanie (potwierdzenie w GUI?), godziny ciszy.
-- Limit długości kolejki porcji ręcznych (np. do porcji dostępnych powyżej progu „brak”).
+- Buzzer: które zdarzenia (rezerwa niska / pusta, błędy ATO: limit dobowy, alarm EMA,
+  awaria czujnika), wyciszanie (potwierdzenie w GUI?), godziny ciszy.
 
 ## 13. Później (świadomie odłożone)
 

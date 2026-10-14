@@ -942,7 +942,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                             <input type="number" id="resPause" min="15" max="120" step="1"
                                 style="width:100%;margin-top:3px;"></label>
                         <label style="font-size:0.72rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="resAlarms"> Level alarms (GUI/display/buzzer)</label>
+                            <input type="checkbox" id="resUseSensor"> Use level sensor (off: portion counting, pump stops at low)</label>
                     </div>
                     <div id="resDerived" style="font-size:0.72rem;color:var(--text-secondary);margin-top:8px;"></div>
                     <div id="resWarning" style="display:none;color:#fbbf24;font-size:0.72rem;margin-top:6px;"></div>
@@ -1757,7 +1757,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             document.getElementById('resMarker').value       = d.marker_level_mm;
             document.getElementById('resTol').value          = d.marker_tol_mm;
             document.getElementById('resPause').value        = d.portion_pause_s;
-            document.getElementById('resAlarms').checked     = !!d.level_alarms;
+            document.getElementById('resUseSensor').checked  = !!d.use_level_sensor;
             document.getElementById('resDerived').textContent =
                 (d.saved ? '' : 'Defaults (not saved yet) \u2014 ') +
                 d.ml_per_mm.toFixed(1) + ' ml/mm \u2022 capacity ' + (d.capacity_ml / 1000).toFixed(2) + ' l' +
@@ -1797,7 +1797,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: 'length_mm=' + len + '&width_mm=' + wid + '&sensor_to_bottom_mm=' + bottom +
                       '&marker_level_mm=' + marker + '&marker_tol_mm=' + tol + '&portion_pause_s=' + pause +
-                      '&level_alarms=' + (document.getElementById('resAlarms').checked ? 1 : 0)
+                      '&use_level_sensor=' + (document.getElementById('resUseSensor').checked ? 1 : 0)
             })
             .then(function(r) { return r ? r.json() : Promise.reject('no response'); })
             .then(function(d) {

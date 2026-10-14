@@ -159,7 +159,7 @@ History/volumes:
 - `POST /api/set-fill-water-max` — set daily_limit_ml
 - `POST /api/set-dose` — set dose_ml
 - `GET|POST /api/alg-config` — EMA/alarm-score parameters + `reserve_config_ml`
-- `GET|POST /api/reserve-config` — reservoir geometry, marker tolerance, portion pause, level alarms
+- `GET|POST /api/reserve-config` — reservoir geometry, marker tolerance, portion pause, level sensor on/off
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 
 Full parameter-level reference: see `README`.

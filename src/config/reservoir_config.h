@@ -8,9 +8,12 @@
 // max water level (full reservoir).
 
 #define RESERVOIR_CONFIG_MAGIC        0xB3
-#define RESERVOIR_FLAG_LEVEL_ALARMS   0x01   // level-sensor alarms (GUI/display/buzzer) enabled
+#define RESERVOIR_FLAG_USE_SENSOR     0x01   // reserve from the level sensor; off = portion counting
+                                             // (sensor still measures, no sensor alarms, pump stops at low)
 
-// Fixed reserve thresholds — % of the capacity up to the marker
+// Fixed reserve thresholds — % of the capacity up to the marker.
+// With the sensor: low = warning, empty = alarm + pump stop.
+// Without the sensor (portion counting): pump stop + alarm already at low.
 #define RESERVE_LOW_PCT_FIXED          30
 #define RESERVE_EMPTY_PCT_FIXED         5
 
@@ -51,6 +54,6 @@ const char* reservoirConfigWarning(const ReservoirConfig& cfg);
 // Derived values
 float    reservoirMlPerMm();             // ml per 1 mm of level
 uint32_t reservoirCapacityMl();          // up to the marker
-bool     levelAlarmsEnabled();
+bool     useLevelSensor();
 
 #endif // RESERVOIR_CONFIG_H

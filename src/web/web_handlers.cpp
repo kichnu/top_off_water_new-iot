@@ -840,7 +840,7 @@ static void sendReserveConfig(AsyncWebServerRequest* request) {
     doc["marker_level_mm"]     = c.marker_level_mm;
     doc["marker_tol_mm"]       = c.marker_tol_mm;
     doc["portion_pause_s"]     = c.portion_pause_s;
-    doc["level_alarms"]        = levelAlarmsEnabled();
+    doc["use_level_sensor"]    = useLevelSensor();
     doc["ml_per_mm"]           = reservoirMlPerMm();
     doc["capacity_ml"]         = cap;
     doc["dose_ml"]             = dose;
@@ -876,10 +876,10 @@ void handleReserveConfig(AsyncWebServerRequest* request) {
         c.marker_level_mm     = u16(getI("marker_level_mm",     c.marker_level_mm));
         c.marker_tol_mm       = u8(getI("marker_tol_mm",        c.marker_tol_mm));
         c.portion_pause_s     = u8(getI("portion_pause_s",      c.portion_pause_s));
-        if (request->hasParam("level_alarms", true)) {
-            bool on = getI("level_alarms", 1) != 0;
-            c.flags = on ? (c.flags | RESERVOIR_FLAG_LEVEL_ALARMS)
-                         : (c.flags & ~RESERVOIR_FLAG_LEVEL_ALARMS);
+        if (request->hasParam("use_level_sensor", true)) {
+            bool on = getI("use_level_sensor", 1) != 0;
+            c.flags = on ? (c.flags | RESERVOIR_FLAG_USE_SENSOR)
+                         : (c.flags & ~RESERVOIR_FLAG_USE_SENSOR);
         }
 
         const char* err = setReservoirConfig(c);

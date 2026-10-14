@@ -15,7 +15,7 @@ static void setDefaults(ReservoirConfig& c) {
     c.marker_level_mm     = 380;
     c.marker_tol_mm       = 5;
     c.portion_pause_s     = 30;
-    c.flags               = RESERVOIR_FLAG_LEVEL_ALARMS;
+    c.flags               = RESERVOIR_FLAG_USE_SENSOR;
     c.magic               = RESERVOIR_CONFIG_MAGIC;
 }
 
@@ -67,9 +67,9 @@ const char* setReservoirConfig(const ReservoirConfig& cfg) {
 
     g_cfg   = c;
     g_saved = true;
-    LOG_INFO("Reservoir config saved: %ux%u mm, sensor→bottom %u mm, marker %u mm ±%u, pause %u s, alarms %s",
+    LOG_INFO("Reservoir config saved: %ux%u mm, sensor→bottom %u mm, marker %u mm ±%u, pause %u s, level sensor %s",
              c.length_mm, c.width_mm, c.sensor_to_bottom_mm, c.marker_level_mm, c.marker_tol_mm,
-             c.portion_pause_s, (c.flags & RESERVOIR_FLAG_LEVEL_ALARMS) ? "on" : "off");
+             c.portion_pause_s, (c.flags & RESERVOIR_FLAG_USE_SENSOR) ? "on" : "off (portion counting)");
     return nullptr;
 }
 
@@ -92,6 +92,6 @@ uint32_t reservoirCapacityMl() {
     return (uint32_t)lroundf(reservoirMlPerMm() * g_cfg.marker_level_mm);
 }
 
-bool levelAlarmsEnabled() {
-    return g_cfg.flags & RESERVOIR_FLAG_LEVEL_ALARMS;
+bool useLevelSensor() {
+    return g_cfg.flags & RESERVOIR_FLAG_USE_SENSOR;
 }

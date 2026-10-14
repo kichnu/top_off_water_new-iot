@@ -244,7 +244,7 @@ Notes:
 
 ## Provisioning (First-Time Setup)
 
-1. **Enter provisioning mode** — Hold button (GPIO 5) for 5+ seconds during boot. Buzzer confirms (`BUZZER_PROVISIONING`).
+1. **Enter provisioning mode** — Hold button (GPIO 4) for 5+ seconds during boot. Buzzer confirms (`BUZZER_PROVISIONING`).
 
 2. **Connect to AP:**
    - SSID: `ESP32-WATER-SETUP`

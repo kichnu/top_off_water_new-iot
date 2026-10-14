@@ -28,7 +28,7 @@ pio run -e seeed_xiao_esp32c3 -t clean && pio run -e seeed_xiao_esp32c3 -t uploa
 
 `src/main.cpp` implements two runtime modes determined at boot:
 
-1. **Provisioning Mode** - Activated by holding reset button (GPIO 5) for 5+ seconds during boot. Starts WiFi AP with captive portal for initial credential setup.
+1. **Provisioning Mode** - Activated by holding reset button (GPIO 4) for 5+ seconds during boot. Starts WiFi AP with captive portal for initial credential setup.
 
 2. **Production Mode** - Normal operation with water algorithm, web server.
 

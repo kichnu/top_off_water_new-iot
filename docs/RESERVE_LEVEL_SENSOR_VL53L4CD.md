@@ -139,12 +139,11 @@ Ustalone:
 - Porcje ręczne nie liczą się do limitu dobowego (nadal w ml), ale odejmują się z rezerwy.
 - Kolejka porcji ręcznych: max 20 (kolejne kliknięcia ignorowane bez komunikatu); kolejka
   przerywana, gdy rezerwa osiągnie próg stopu (5% z czujnikiem, 30% bez).
-- Buzzer: jeden wzorzec — obecny `BUZZER_ALARM` (2 piknięcia 50 ms z przerwą 100 ms,
-  co 12 s).
-
-Otwarte:
-- Buzzer: które zdarzenia (rezerwa niska / pusta, błędy ATO: limit dobowy, alarm EMA,
-  awaria czujnika), wyciszanie (potwierdzenie w GUI?), godziny ciszy.
+- Buzzer: jeden wzorzec `BUZZER_ALARM` — 2 piknięcia 50 ms z przerwą 100 ms, co 120 s
+  (wdrożone). Zdarzenia: rezerwa < 5% (z czujnikiem), stop pompy przy 30% (bez czujnika),
+  każdy błąd ATO (wdrożone), awaria czujnika (tylko z czujnikiem). Alarm trwa do usunięcia
+  przyczyny (albo wyłączenia czujnika) i resetu z GUI / display. Bez ciszy nocnej.
+  Sygnały startowe bez zmian. Niska rezerwa (30%) z czujnikiem — bez buzzera, tylko GUI.
 
 ## 13. Później (świadomie odłożone)
 

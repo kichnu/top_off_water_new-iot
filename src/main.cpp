@@ -285,8 +285,9 @@ void loop() {
             subtractReserveMl(directVol);
         }
 
-        // Buzzer mode — higher priority wins
-        if (isReserveEmpty()) {
+        // Buzzer mode — higher priority wins; every ATO error (state stays until
+        // reset from the GUI) sounds the alarm
+        if (isReserveEmpty() || waterAlgorithm.getState() == STATE_ERROR) {
             setBuzzerMode(BUZZER_ALARM);
         } else if (isReserveLow()) {
             setBuzzerMode(BUZZER_WARNING);

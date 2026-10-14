@@ -26,13 +26,17 @@ Wewnątrz taska licznik `tick` (0 .. BUZZER_CYCLE_TICKS-1) wyznacza
 pozycję w cyklu. Wzorce definiowane są przez numery ticków:
 
 ```
-BUZZER_CYCLE_MS   = 12000 ms  → BUZZER_CYCLE_TICKS = 240
-BUZZER_TICK_MS    =    50 ms
-BUZZER_ALARM_GAP  =   100 ms  → BUZZER_ALARM_TICK2 = 3
+BUZZER_TICK_MS        =     50 ms
+BUZZER_CYCLE_MS       =  12000 ms  → 240 ticków (WARNING, PROVISIONING)
+BUZZER_ALARM_CYCLE_MS = 120000 ms  → 2400 ticków (ALARM), licznik tick jest uint16_t
+BUZZER_ALARM_GAP      =    100 ms  → BUZZER_ALARM_TICK2 = 3
 
 WARNING/PROV:  tick 0              → ON (50ms), reszta OFF
 ALARM:         tick 0, tick 3      → ON (50ms), przerwa 100ms, ON (50ms), reszta OFF
 ```
+
+Zmiana trybu zeruje licznik — nowy alarm odzywa się od razu, a nie dopiero w następnym cyklu.
+`BUZZER_ALARM` to jedyny alarm „sprawdź GUI” (ustalenia: `RESERVE_LEVEL_SENSOR_VL53L4CD.md`, sekcja 12).
 
 ## Komunikacja main loop → task
 

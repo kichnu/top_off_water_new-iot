@@ -2,35 +2,34 @@
 #define BUZZER_CONTROLLER_H
 
 // ============================================================
-// Parametry czasowe — edytuj tutaj, obowiązują wszystkie tryby.
+// Timing — applies to all modes
 // ============================================================
-#define BUZZER_TICK_MS        50    // rozdzielczość taska FreeRTOS [ms]
-#define BUZZER_CYCLE_MS    12000    // okres cyklu warn/alarm [ms]
-#define BUZZER_CYCLE_TICKS (BUZZER_CYCLE_MS / BUZZER_TICK_MS)  // 240 ticków
+#define BUZZER_TICK_MS          50    // FreeRTOS task resolution [ms]
+#define BUZZER_CYCLE_MS      12000    // warning / provisioning period [ms]
+#define BUZZER_ALARM_CYCLE_MS 120000  // alarm period [ms]
 
-// Przerwa między dwoma tikami w BUZZER_ALARM [ms] — musi być wielokrotnością BUZZER_TICK_MS
+// Gap between the two alarm beeps [ms] — must be a multiple of BUZZER_TICK_MS
 #define BUZZER_ALARM_GAP_MS  100
 #define BUZZER_ALARM_TICK2   (BUZZER_ALARM_GAP_MS / BUZZER_TICK_MS + 1)  // tick 3
 
 // ============================================================
-// Tryby buzzera
-// Aby dodać nowy wzorzec: dodaj wpis poniżej i obsłuż go
-// w switch() wewnątrz buzzerTask() w buzzer_controller.cpp.
-// Wszystkie tryby dzielą BUZZER_TICK_MS i BUZZER_CYCLE_MS.
+// Buzzer modes
+// To add a pattern: add an entry below and handle it in the
+// switch() inside buzzerTask() in buzzer_controller.cpp.
 // ============================================================
 enum BuzzerMode {
     BUZZER_OFF = 0,
-    BUZZER_PROVISIONING,   // tick 0 ON — tryb konfiguracji
-    BUZZER_WARNING,        // tick 0 ON — niski stan rezerwy
-    BUZZER_ALARM,          // tick 0 i BUZZER_ALARM_TICK2 ON — pusta rezerwa
-    // TODO: kolejne tryby (np. daily limit, red alert EMA)
+    BUZZER_PROVISIONING,   // tick 0 ON every BUZZER_CYCLE_MS — provisioning mode
+    BUZZER_WARNING,        // tick 0 ON every BUZZER_CYCLE_MS — low reserve (legacy counter)
+    BUZZER_ALARM,          // ticks 0 and BUZZER_ALARM_TICK2 ON every BUZZER_ALARM_CYCLE_MS —
+                           // the single "check the GUI" alarm
 };
 
-void initBuzzer();          // inicjalizacja GPIO + start FreeRTOS task
+void initBuzzer();          // GPIO init + FreeRTOS task start
 void setBuzzerMode(BuzzerMode mode);
 
-void buzzerPowerOn();       // 1000ms — wywołaj jako pierwsze w setup()
-void buzzerOK();            // krótki + długi — wszystko gotowe
-void buzzerCritical();      // 4x 250ms — błąd krytyczny startu
+void buzzerPowerOn();       // 1000 ms — call first in setup()
+void buzzerOK();            // short + long — boot complete
+void buzzerCritical();      // 4x 250 ms — critical boot error
 
 #endif // BUZZER_CONTROLLER_H

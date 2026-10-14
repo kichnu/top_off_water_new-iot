@@ -10,13 +10,23 @@ static TaskHandle_t g_taskHandle = nullptr;
 
 static void buzzerTask(void*) {
     TickType_t xLastWake = xTaskGetTickCount();
-    uint8_t tick = 0;
+    uint16_t   tick      = 0;
+    BuzzerMode lastMode  = BUZZER_OFF;
 
     while (true) {
         vTaskDelayUntil(&xLastWake, pdMS_TO_TICKS(BUZZER_TICK_MS));
 
+        // Mode change restarts the cycle — a new alarm sounds immediately
+        BuzzerMode mode = g_mode;
+        if (mode != lastMode) {
+            tick     = 0;
+            lastMode = mode;
+        }
+        uint16_t cycleTicks = (mode == BUZZER_ALARM ? BUZZER_ALARM_CYCLE_MS : BUZZER_CYCLE_MS)
+                              / BUZZER_TICK_MS;
+
         bool on = false;
-        switch (g_mode) {
+        switch (mode) {
             case BUZZER_PROVISIONING:
             case BUZZER_WARNING:
                 on = (tick == 0);
@@ -30,7 +40,7 @@ static void buzzerTask(void*) {
 
         digitalWrite(BUZZER_PIN, on ? BUZZER_LEVEL_ON : BUZZER_LEVEL_OFF);
 
-        if (++tick >= BUZZER_CYCLE_TICKS) tick = 0;
+        if (++tick >= cycleTicks) tick = 0;
     }
 }
 
@@ -46,7 +56,7 @@ void setBuzzerMode(BuzzerMode mode) {
     g_mode = mode;
 }
 
-// ---- Blokujące sygnały bootowe ----
+// ---- Blocking boot signals ----
 
 static void beep(uint32_t ms) {
     if (g_taskHandle) vTaskSuspend(g_taskHandle);

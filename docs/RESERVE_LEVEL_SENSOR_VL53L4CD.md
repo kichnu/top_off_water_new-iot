@@ -1,147 +1,161 @@
 # Plan wdrożenia: VL53L4CD jako monitor poziomu wody w rezerwie
 
-Wersja 2 (2026-10-13) — po przejściu na ESP32-C3 i nową płytkę. Wersja 1
-(2026-09-16, ESP32-C6, pływak rezerwy jako checkpoint) — w historii gita.
+Wersja 3 (2026-10-14) — po testach na prawdziwym zbiorniku i ustaleniu procedur
+kalibracji. Wersje 1–2 (pływak jako checkpoint, Kalman jako krok główny) — w historii gita.
 Testy fizyczne czujnika: `~/Dokumenty/My_apps/TOOLS/distance_sensor_pololu/WNIOSKI.md`.
 
 ## 1. Cel
 
-Ciągły pomiar objętości wody w zbiorniku rezerwy (zasilającym pompę ATO) na
-podstawie odległości z góry do lustra wody. Dodatkowo: pomiar rzeczywistej
-dawki każdego cyklu i (eksperymentalnie) korekta wydajności pompy.
+Ciągły pomiar objętości wody w zbiorniku rezerwy (zasilającym pompę ATO) na podstawie
+odległości z góry do lustra wody. Dolewka zawsze w stałych porcjach o skalibrowanym czasie
+pompy (sekcje 5–6); czujnik weryfikuje sprawność (znacznik, sekcja 4) i pokazuje rezerwę.
 
-## 2. Sprzęt
+## 2. Sprzęt i zbiornik (stan z testów 2026-10-14)
 
-- VL53L4CD (Pololu #3692, biblioteka `pololu/VL53L4CD`) na wspólnym I2C z RTC
-  i FRAM: SDA GPIO 5, SCL GPIO 6, 100 kHz. Adres 0x29, XSHUT/INT
-  niepodłączone.
-- Pływak rezerwy usunięty z płytki i z kodu (commit `9bb6758`). ToF jest
-  jedynym czujnikiem rezerwy.
-- Montaż: ~100 mm nad lustrem przy pełnym zbiorniku, zbiornik ~300 mm →
-  zakres pomiaru ~100–400 mm. Przekrój stały na całej wysokości.
-- Fizyczny znacznik poziomu na zbiorniku (sekcja 8).
+- VL53L4CD (Pololu #3692, `pololu/VL53L4CD`) na wspólnym I2C (SDA GPIO 5, SCL GPIO 6,
+  100 kHz), adres 0x29, XSHUT/INT niepodłączone. Pływak rezerwy usunięty (`9bb6758`).
+- Otwór w obudowie: cylindryczny Ø10 mm, krawędź zewnętrzna 5,5 mm od czujnika.
+  Ø7 mm dawał 100% odrzuconych próbek — ścianka w stożkach Tx 29° / Rx 25°
+  (datasheet rys. 21; Rx = mniejszy otwór Ø0,20, Tx = większy Ø0,40 przy pinie 1).
+- Zbiornik testowy: 282 × 202 mm, ścianki pionowe (56,96 ml/mm), czujnik 470 mm nad dnem,
+  maksymalny poziom (znacznik) 380 mm od dna → odległość przy pełnym 90 mm.
+- **Przegroda z małym otworem** — poziom po stronie czujnika wyrównuje się powoli:
+  po pracy pompy 2 min ciszy pomiarowej (`LEVEL_PUMP_QUIET_MS`, wdrożone).
+- Szum: seria 10 próbek sd ~2–3 mm, SEM ~0,7–1 mm; kolejne serie przy stojącej wodzie
+  ±1 mm. Pojedyncza seria → ±60 ml; do decyzji uśredniać kilka serii.
 
-## 3. Stan wody — model
+Wnioski z testów (`LVLTEST`, przebiegi 29–60 s): stosunek czujnik/kalibracja 0,75–0,94,
+dopasowanie `ml ≈ 10,2·t + 182` — przesunięcie to ekstrapolacja poza zakres krótkich
+przebiegów. Dlatego kalibracja **w punkcie pracy** (porcja = dawka), nie model ml/s
+(sekcja 5) — start pompy i cofka z węża są wtedy w czasie porcji.
 
-- `g_reserveMl` w FRAM prowadzony stale (jak dziś): po każdym cyklu
-  odejmowane `q_est · t_pump`.
-- Gdy czujnik jest sprawny, wartość jest nadpisywana pomiarem — **pomiar ma
-  priorytet** (spadek poziomu jest fizycznie deterministyczny, błąd tylko po
-  stronie pomiaru).
-- Czujnik niesprawny (brak ACK / `LEVEL_FAULT_SERIES` złych serii z rzędu) →
-  tryb licznika + ostrzeżenie w GUI „czujnik poziomu niesprawny”. Progi
-  działają dalej na liczniku.
-- Mapowanie liniowe: `ml = capacity_ml · clamp(d_empty − d, 0, range) / range`,
-  `range = d_empty − d_full`.
+## 3. Ustawienia zbiornika (Settings) — KROK 1
 
-## 4. Progi
+Parametry w FRAM (nowy blok, sekcja 9), edycja w Settings:
+- długość, szerokość [mm] (przekrój prostokątny, ścianki pionowe);
+- odległość czujnik → dno [mm];
+- poziom znacznika = maksymalny poziom od dna [mm];
+- tolerancja sprawdzenia przy znaczniku [±1–30 mm, domyślnie 5];
+- przerwa między porcjami [15–120 s, domyślnie 30];
+- wyłącznik alarmów czujnika poziomu;
+- wyliczane (tylko odczyt): ml/mm, pojemność do znacznika, liczba porcji, progi
+  (na sztywno: niska < 30%, brak < 5%).
 
-Dwa konfigurowalne progi (% pojemności), z histerezą:
-- **warning** — żółty status, buzzer WARNING;
-- **error** — blokada pompy (auto + ręczna), czerwony status, buzzer ALARM.
+Walidacja (parametry czujnika): odległość czujnik → dno ≤ 1200 mm (zasięg VL53L4CD),
+prześwit czujnik → lustro przy znaczniku ≥ 50 mm; ostrzeżenie (bez blokady), gdy
+plama pola widzenia 18° na dnie jest szersza niż krótszy bok zbiornika.
 
-(Tymczasowo w liczniku: warning ≤ 20% `RESERVE_WARN_PCT`, error = 0 ml.)
+## 4. Sprawdzenie przy znaczniku
 
-## 5. Pomiar dawki i korekta pompy (filtr Kalmana)
+1. Użytkownik dolewa wodę do znacznika i klika „Woda na znaczniku”.
+2. System czeka na ustabilizowanie (przegroda) i robi długi pomiar: kilkanaście serii,
+   do ~2 min; pokazuje postęp.
+3. Wynik: zmierzona odległość vs oczekiwana (czujnik → dno − znacznik), odchyłka w mm i ml,
+   rozrzut serii; ocena względem tolerancji z Settings.
+4. Użytkownik zatwierdza → rezerwa = pełna (reset), zapis daty sprawdzenia
+   (i ewentualnie offsetu — do ustalenia).
 
-Pompa wirnikowa: zmiany wydajności powolne/systematyczne (wysokość
-podnoszenia, zużycie, filtr) albo skokowe-awaryjne (zapowietrzenie,
-zatkanie). Szum pomiaru — losowy, bez pamięci między cyklami. Pojedynczy
-cykl: σ(Δh) ~0,7 mm ≈ 15% dawki 150 ml (przy ~33 ml/mm) — tego rzędu co
-niepewność pompy, więc rozdzielenie daje dopiero filtracja w czasie.
+## 5. Kalibracja pompy porcjami (GUI: sekcja Pump Calibration, prowadzenie krok po kroku)
 
-Pomiar wokół cyklu:
-1. seria `h_before` tuż przed startem pompy,
-2. pompa (bez pomiaru),
-3. uspokojenie 20–30 s (fale, cofka z węża), seria `h_after`,
-4. `V_meas = A · (h_after − h_before)`, `σ_meas` z SEM obu serii.
+Wielkość porcji = `Single Dose ml` (jedna wartość dla algorytmu ATO, dolewki ręcznej
+i kalibracji).
 
-Wybrany wariant: **skalarny Kalman na `q` [ml/s]**:
-- stan `q_est`, `P`; start z ręcznej kalibracji `volume_per_second`;
-- predykcja `P += Q` (Q — tempo dryfu pompy, jedyny parametr strojenia);
-- obserwacja `q_obs = V_meas / t_pump`, `R = (σ_meas / t_pump)²`;
-- bramka: `|q_obs − q_est| > 3·√(P+R)` → odrzut + flaga anomalii:
-  - spadek ~0 → warning „pompa nie podaje”, K z rzędu → error z blokadą;
-  - spadek ≫ oczekiwany → warning (wyciek / syfon / ręczny pobór);
-- czas dawki = `dose_ml / q_est`.
+1. Warunki: wymiary wprowadzone, czujnik sprawny, system w Service Mode, zapas wody
+   na N porcji + margines.
+2. Pomiar poziomu „przed” (kilka serii).
+3. N przebiegów (domyślnie 10): Start → pompa → użytkownik zatrzymuje, gdy naczynie
+   osiągnie porcję. Czas mierzy firmware (ms). Przerwa między przebiegami — sekcja 12.
+4. Pomiar poziomu „po” (2 min ciszy + kilka serii) → całkowity ubytek wg czujnika
+   (przy 10 × 250 ml ~44 mm — bardzo dokładnie).
+5. Wynik: mediana i rozrzut czasów, czas porcji, porównanie N × porcja vs czujnik.
+   Zatwierdź → zapis czasu porcji (ms) do FRAM.
 
-Bezpieczeństwo (twarde, niezależne od filtra):
-- `q_est` clamp do [0,7 … 1,3] × kalibracja ręczna → max ~1,43× czasu;
-- twardy limit czasu jednego cyklu;
-- limit dobowy liczony ze **zmierzonej** objętości, nie zadanej;
-- **tryb cień** (przełącznik w settings): filtr liczy i loguje, czas pompy
-  bez zmian — włączenie korekty dopiero po obserwacji logów.
+Zmiana `Single Dose ml` po kalibracji → kalibracja nieważna (ostrzeżenie w GUI).
 
-Etap późniejszy (eksperyment): model `q = a + b·h` (RLS) — zależność
-wydajności od poziomu w rezerwie.
+## 6. Dolewka ręczna porcjami (System Control)
 
-## 6. Wykrywanie dolewania wody do rezerwy
+Zamiast przełącznika ON/OFF:
+- **ON** (monostabilny): każde kliknięcie dodaje jedną porcję do kolejki; pierwsze
+  uruchamia pompę. Etykieta: porcja bieżąca / łącznie w kolejce.
+- **OFF**: dokończ bieżącą porcję i wyzeruj kolejkę.
+- Porcja = skalibrowany czas pompy; między porcjami przerwa (sekcja 12).
+- Rezerwa: odjęcie porcji po każdej porcji.
 
-Woda nie przybywa sama → wzrost poziomu bez pracy pompy = dolewanie.
+## 7. Monitor poziomu (ATO Process Monitor)
 
-```
-STABLE --(wzrost > próg w 2 kolejnych seriach)--> REFILLING
-REFILLING: blokada cyklu ATO, pomiar co 2–5 s
-REFILLING --(zmiana < próg przez T_stable ~30 s)--> STABLE
-   → nowa linia bazowa, log "+X ml", auto-zdjęcie warning/error
-     (poziom > próg + histereza)
-```
+Graficzny zbiornik z poziomem: kolor wg stref (OK / niska / pusta), wartości ml, %, mm,
+stan czujnika (ok / fault / brak), wiek pomiaru, informacja „uspokajanie po pompie”.
 
-- Dolewanie w trakcie cyklu ATO → `h_after > h_before` → cykl klasyfikowany
-  jako dolewanie, nie trafia do filtra.
-- Spadek bez pompy (wyciek, pobór ręczny) → log + warning powyżej progu.
+## 8. Buzzer
 
-## 7. Harmonogram pomiaru
-
-- Nieblokujący: jedna próbka na iterację `loop()`, seria N próbek
-  (`status != 0` odrzucane, pierwsza próbka po bezczynności pomijana).
-- Wyzwalacze: cykliczny (bring-up 10 s, docelowo 60 s), przed/po cyklu ATO,
-  szybki w stanie REFILLING, on-demand z GUI.
-- Start: N=10, budżet 50 ms. Finalne wartości po testach na zbiorniku.
-
-## 8. Znacznik fizyczny — weryfikacja kalibracji
-
-Na zbiorniku fizyczny znacznik poziomu o znanej objętości (`marker_ml`).
-Gdy woda stoi na znaczniku, użytkownik klika w dashboardzie „poziom na
-znaczniku” → system porównuje bieżący pomiar z zapamiętanym `d_marker`:
-- rozjazd w granicy tolerancji → potwierdzenie kalibracji (log, timestamp);
-- rozjazd większy → ostrzeżenie (przesunięty czujnik, kondensacja na
-  soczewce) + opcja korekty offsetu.
-
-Pierwsze kliknięcie (brak `d_marker`) zapisuje referencję.
+Jeden rodzaj alarmu — sygnał „sprawdź GUI” (później też display). Szczegóły w sekcji 12.
+Sygnały provisioning i startowe bez zmian.
 
 ## 9. FRAM
 
-Wolne: 0x05A2–0x05FF. Nowy blok `ReserveLevelConfig` (magic inny niż 0xA8
-TopOffConfig, checksum osobno): `d_empty_mm`, `d_full_mm`, `capacity_ml`,
-`d_marker_mm`, `marker_ml`, progi warning/error, N, interwał, tryb korekty.
-Osobny mały blok stanu filtra: `q_est`, `P`. Dokładny layout przy
-implementacji kroku 2.
+MB85RC256V = 32 KB; zajęte do 0x0AC0 (~2,7 KB), wolne 0x0AC0–0x7FFF (~29 KB) oraz
+0x05A2–0x05FF (94 B). Nowy blok `ReserveLevelConfig` (osobny magic + checksum) w 0x05A2:
+wymiary, tolerancja, progi, czas porcji (ms) + porcja, dla której skalibrowano, data
+sprawdzenia przy znaczniku. Obszar 0x0AC0+ zostaje na późniejszy log zdarzeń.
 
-## 10. API / GUI (sekcja settings)
+## 10. API / GUI
 
 Form-encoded POST (konwencja projektu):
-- `POST /api/reserve-level/calibrate-empty`, `.../calibrate-full`,
-  `.../set-capacity`, `.../marker`, `.../config` (progi, N, interwał, tryb);
-- `GET /api/reserve-level/status`.
-Diagnostyka bring-up już w `/api/status` (`level_*`).
-Dashboard: poziom rezerwy w ml i %, stan czujnika, stan REFILLING.
+- `GET|POST /api/reserve-config` — wymiary, tolerancja, progi;
+- `POST /api/reserve/marker-check` (start), `GET` (postęp/wynik), `POST .../accept`;
+- `POST /api/pump/calibration/...` — start / run-start / run-stop / finish / accept / abort;
+- `POST /api/pump/portion-add`, `POST /api/pump/portion-stop`;
+- `GET /api/status` — dodatkowo poziom w ml/%, strefa, kolejka porcji, stan procedur.
 
-## 11. Kolejność wdrożenia
+## 11. Harmonogram pomiaru
 
-1. ✅ Sterownik + seria pomiarowa + diagnostyka (`level_sensor.*`, log +
-   `/api/status`). **Weryfikacja: odbicie od realnej wody** (`signal_kcps`,
-   `rej`, `sd`).
-2. FRAM `ReserveLevelConfig` + kalibracja empty/full/capacity (API).
-3. Podłączenie do `reserve_controller` (ml z pomiaru, fallback licznik,
-   progi z histerezą, stan czujnika w GUI).
-4. Wykrywanie dolewania (REFILLING) + blokada cyklu.
-5. Pomiar dawki wokół cyklu + Kalman w trybie cień + limit dobowy z pomiaru.
-6. Znacznik fizyczny.
-7. Włączenie korekty pompy (po obserwacji), ewentualnie model RLS.
+- Nieblokujący: jedna próbka na iterację `loop()`, seria N=10, budżet 50 ms.
+- Cyklicznie co 10 s (bring-up; docelowo do ustalenia), brak pomiarów w trakcie pompy
+  i 2 min po niej; serie na żądanie (procedury) omijają ciszę.
 
-## 12. Otwarte
+## 12. Ustalenia (2026-10-14) i otwarte punkty
 
-- Finalne N, budżet, interwał — po testach.
-- Q (dryf pompy), K (anomalie z rzędu), progi wykrywania dolewania — po
-  zebraniu danych z trybu cień.
+Ustalone:
+- Przerwa między porcjami (kalibracja i dolewka ręczna): domyślnie 30 s, ustawiana w GUI
+  15–120 s. Algorytm ATO ma naturalnie długie przerwy.
+- Czas pompy z dokładnością 0,1 s (dziś pełne sekundy w `triggerPump` / `calculateDoseTime`).
+- `Single Dose ml` = porcja wszędzie; panel ustawień przerabiany wg potrzeb.
+- OFF dokańcza porcję — bez osobnego stopu awaryjnego (porcja < 250 ml nie przeleje
+  akwarium, wężyk można zatkać).
+- Rezerwa tylko z czujnika (bez pływaka). Progi na sztywno: niska < 30% pojemności,
+  brak < 5%. GUI: bargraf podzielony na porcje, strefy kolorami. Pole `Reserve Volume ml`
+  i licznik programowy — do przerobienia (pojemność z wymiarów).
+- Poziom < 5% = brak wody: alarm, nowa porcja nie startuje; rozpoczęta porcja zawsze się
+  kończy (pompa ciągnie do ~2%).
+- Kalibracja: GUI ostrzega, żeby nie wlewać wody z naczynia z powrotem do zbiornika do
+  końca procedury. Zawsze 10 porcji, bez wpisywania zebranej objętości.
+- Wlot pompy / otwór w przegrodzie: bez parametru (5% pokrywa wlot; otwór zostanie powiększony).
+- Walidacja wymiarów w Settings uwzględnia parametry czujnika (zasięg, minimalny prześwit,
+  stożek pola widzenia).
+- Tolerancja przy znaczniku: Settings ±1–30 mm, domyślnie ±5 mm.
+- Settings: wyłącznik alarmów czujnika poziomu (GUI / display / buzzer) — pomiary i funkcje
+  działają dalej, żeby nie zaburzać algorytmu.
+- Porcje ręczne nie liczą się do limitu dobowego (nadal w ml), ale odejmują się z rezerwy.
+
+Otwarte:
+- Wyłączone alarmy czujnika: czy blokada pompy przy „brak” (< 5%) też jest wyłączona?
+- Buzzer: zdarzenia, wzorzec, wyciszanie (potwierdzenie w GUI?), godziny ciszy.
+- Limit długości kolejki porcji ręcznych (np. do porcji dostępnych powyżej progu „brak”).
+
+## 13. Później (świadomie odłożone)
+
+- Log zdarzeń w FRAM (0x0AC0+, ~1000 rekordów) + eksport CSV, rozróżnienie testy / praca.
+- Wykrywanie dolania wody do rezerwy (REFILLING) i spadku bez pompy (wyciek).
+- Pomiar dawki wokół każdego cyklu ATO, filtr (Kalman) i korekta pompy, tryb cień.
+- Wyświetlacz OLED (`docs/DISPLAY_OLED_091.md`) — tylko dane obecne w GUI.
+- Usunięcie testu `LVLTEST` (`level_test.*`), gdy procedury z sekcji 4–5 go zastąpią.
+
+## 14. Kolejność wdrożenia
+
+1. ✅ Sterownik + serie + diagnostyka; ✅ cisza pomiarowa po pompie; ✅ test `LVLTEST`.
+2. Settings zbiornika (sekcja 3) — FRAM, API, GUI.
+3. Monitor poziomu (sekcja 7) + rezerwa z czujnika (licznik jako fallback) + progi.
+4. Sprawdzenie przy znaczniku (sekcja 4).
+5. Kalibracja porcjami (sekcja 5) + czas pompy w ms w algorytmie.
+6. Dolewka ręczna porcjami (sekcja 6).
+7. Buzzer — jeden alarm (sekcja 8).

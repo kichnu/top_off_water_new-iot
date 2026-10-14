@@ -11,6 +11,8 @@ informacje z pomiaru lustra wody w rezerwie (VL53L4CD).
 
 Zasady:
 - tylko aktualny status i potrzebne informacje — bez zbędnych animacji;
+- ekran nie pokazuje niczego, czego nie ma w GUI (ustalenie 2026-10-14) — najpierw dane w GUI,
+  potem na ekranie; implementacja odłożona do zakończenia kroków z `RESERVE_LEVEL_SENSOR_VL53L4CD.md`;
 - ekran nie może zapychać `loop()` (sekcja 5 — do ustalenia przed implementacją).
 
 ## 2. Sprzęt

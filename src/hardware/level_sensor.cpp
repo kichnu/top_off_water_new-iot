@@ -102,7 +102,8 @@ void initLevelSensor() {
         g_state = LEVEL_SENSOR_OK;
         LOG_INFO("Level sensor: VL53L4CD initialized (budget %d ms, N=%d, every %lu s)",
                  LEVEL_TIMING_BUDGET_MS, LEVEL_SAMPLES_PER_SERIES, LEVEL_SERIES_INTERVAL_MS / 1000);
-        startSeries();   // first reading right after boot
+        // First series starts from loop() — setup() takes longer than the
+        // series timeout, a series started here would close empty
     } else {
         g_state = LEVEL_SENSOR_ABSENT;
         LOG_ERROR("Level sensor: VL53L4CD not detected (retry every %lu s)", LEVEL_INIT_RETRY_MS / 1000);

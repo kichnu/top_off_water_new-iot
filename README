@@ -16,6 +16,7 @@ Embedded system for automated aquarium water level management. Built on Seeed XI
 - VL53L4CD ToF sensor (0x29) — reservoir water level (integration pending; reserve sensing currently stubbed)
 - DS3231 RTC — hardware clock with battery backup, NTP-synchronized, UTC storage
 - FRAM (MB85RC256V) — non-volatile storage for credentials (AES-256 encrypted), top-off ring buffer (60 records), EMA/alarm state, algorithm config, reserve volume
+- OLED 0.91" 128×32 SSD1306 (0x3C, Waveshare) — local device status display (planned, see `docs/DISPLAY_OLED_091.md`)
 
 **Time management:** RTC stores UTC. Display/schedule times converted to local timezone (Poland CET/CEST with automatic DST) via `localtime_r()`. NTP sync at boot via IP addresses (DNS-independent).
 

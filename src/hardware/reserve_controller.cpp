@@ -1,5 +1,8 @@
 #include "reserve_controller.h"
+#include <math.h>
 #include "fram_controller.h"
+#include "level_sensor.h"
+#include "../config/reservoir_config.h"
 #include "../core/logging.h"
 
 static uint32_t g_reserveConfigMl  = RESERVE_ML_DEFAULT;
@@ -52,4 +55,43 @@ void clearReserveAlarm() {
     g_reserveMl = g_reserveConfigMl;
     saveReserveToFRAM(g_reserveConfigMl, g_reserveMl);
     LOG_INFO("Reserve refilled — reset to %lu ml", g_reserveMl);
+}
+
+ReserveView getReserveView(uint16_t doseMl) {
+    ReserveView v = {};
+    v.fromSensor = useLevelSensor();
+    uint32_t dose = doseMl ? doseMl : 1;
+
+    if (v.fromSensor) {
+        // The hidden safety bottom is cut off: 0 usable ml = empty
+        const ReservoirLevels lv = reservoirLevels(dose);
+        const LevelSeries& ls = getLastLevelSeries();
+        v.capacityMl = lv.usableMl;
+        v.lowMl      = lv.lowMl;
+        v.known = getLevelSensorState() == LEVEL_SENSOR_OK && ls.valid && ls.finished_ms != 0;
+        if (v.known) {
+            float h = getReservoirConfig().sensor_to_bottom_mm - ls.distance_mm;
+            if (h < 0) h = 0;
+            v.waterMm = h;
+            uint32_t raw = (uint32_t)lroundf(h * reservoirMlPerMm());
+            v.ml = raw > lv.hiddenMl ? raw - lv.hiddenMl : 0;
+        }
+    } else {
+        // Counter fallback — capacity is still the configured ml volume until the
+        // counter switches to the geometry capacity (portion counting)
+        v.capacityMl = g_reserveConfigMl;
+        v.lowMl      = (g_reserveConfigMl * RESERVE_LOW_PCT_FIXED + 100u * dose - 1) / (100u * dose) * dose;
+        v.ml         = g_reserveMl;
+        v.known      = true;
+    }
+
+    if (!v.known) {
+        v.zone = RESERVE_ZONE_UNKNOWN;
+        return v;
+    }
+    v.pct = v.capacityMl ? v.ml * 100.0f / v.capacityMl : 0.0f;
+    if      (v.ml == 0)       v.zone = RESERVE_ZONE_EMPTY;
+    else if (v.ml <= v.lowMl) v.zone = RESERVE_ZONE_LOW;
+    else                      v.zone = RESERVE_ZONE_OK;
+    return v;
 }

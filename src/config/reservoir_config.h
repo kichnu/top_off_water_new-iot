@@ -11,11 +11,14 @@
 #define RESERVOIR_FLAG_USE_SENSOR     0x01   // reserve from the level sensor; off = portion counting
                                              // (sensor still measures, no sensor alarms, pump stops at low)
 
-// Fixed reserve thresholds — % of the capacity up to the marker.
+// Fixed reserve thresholds, both rounded up to whole portions (see ReservoirLevels).
+// HIDDEN — % of the full capacity kept below "empty" for pump safety (intake
+//          height); never shown to the user, the usable range ends above it.
+// LOW    — % of the usable capacity shown as the permanent yellow reserve range.
 // With the sensor: low = warning, empty = alarm + pump stop.
 // Without the sensor (portion counting): pump stop + alarm already at low.
 #define RESERVE_LOW_PCT_FIXED          30
-#define RESERVE_EMPTY_PCT_FIXED         5
+#define RESERVE_HIDDEN_PCT_FIXED        5
 
 // Validation ranges
 #define RESERVOIR_DIM_MIN_MM           50
@@ -53,7 +56,16 @@ const char* reservoirConfigWarning(const ReservoirConfig& cfg);
 
 // Derived values
 float    reservoirMlPerMm();             // ml per 1 mm of level
-uint32_t reservoirCapacityMl();          // up to the marker
+uint32_t reservoirCapacityMl();          // up to the marker (geometry, not rounded)
+
+// Capacity in whole portions of doseMl (all values are multiples of doseMl)
+struct ReservoirLevels {
+    uint32_t fullMl;     // capacity up to the marker, rounded down to whole portions
+    uint32_t hiddenMl;   // RESERVE_HIDDEN_PCT_FIXED of fullMl, rounded up — safety bottom
+    uint32_t usableMl;   // fullMl − hiddenMl — what the user sees as 100%
+    uint32_t lowMl;      // RESERVE_LOW_PCT_FIXED of usableMl, rounded up — yellow reserve
+};
+ReservoirLevels reservoirLevels(uint16_t doseMl);
 bool     useLevelSensor();
 
 #endif // RESERVOIR_CONFIG_H

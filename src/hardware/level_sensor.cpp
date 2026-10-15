@@ -194,6 +194,8 @@ void requestLevelSeries() {
 
 uint32_t getLevelSeriesCount() { return g_seriesCount; }
 
+bool isLevelSettling() { return g_quiet || isPumpActive(); }
+
 LevelSensorState   getLevelSensorState() { return g_state; }
 const LevelSeries& getLastLevelSeries()  { return g_last; }
 

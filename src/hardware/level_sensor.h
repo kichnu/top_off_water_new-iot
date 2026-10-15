@@ -54,4 +54,7 @@ const LevelSeries& getLastLevelSeries();   // last completed series (valid or no
 void     requestLevelSeries();
 uint32_t getLevelSeriesCount();            // number of completed series since boot
 
+// Pump running or inside the post-pump quiet time — the last series predates the run
+bool     isLevelSettling();
+
 #endif // LEVEL_SENSOR_H

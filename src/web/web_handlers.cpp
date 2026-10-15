@@ -189,6 +189,23 @@ void handleStatus(AsyncWebServerRequest* request) {
         json["level_ambient_kcps"]= ls.ambient_kcps;
         json["level_age_s"]       = ls.finished_ms ? (long)((millis() - ls.finished_ms) / 1000) : -1L;
     }
+
+    // Reserve level for the monitor bargraph (sensor or counter, see getReserveView)
+    {
+        uint16_t    dose = waterAlgorithm.getConfig().dose_ml;
+        ReserveView rv   = getReserveView(dose);
+        json["res_configured"]  = isReservoirConfigSaved();
+        json["res_source"]      = rv.fromSensor ? "sensor" : "counter";
+        json["res_known"]       = rv.known;
+        json["res_ml"]          = rv.ml;
+        json["res_capacity_ml"] = rv.capacityMl;
+        json["res_pct"]         = rv.pct;
+        json["res_water_mm"]    = rv.waterMm;
+        json["res_zone"]        = (uint8_t)rv.zone;   // 0=ok 1=low 2=empty 3=unknown
+        json["res_low_ml"]      = rv.lowMl;   // permanent yellow reserve range
+        json["res_dose_ml"]     = dose;
+        json["level_settling"]  = isLevelSettling();
+    }
     json["rtc_ts"]            = (uint32_t)getUnixTimestamp();
 
     // ============================================
@@ -830,6 +847,7 @@ static void sendReserveConfig(AsyncWebServerRequest* request) {
     const ReservoirConfig& c = getReservoirConfig();
     uint16_t dose = waterAlgorithm.getConfig().dose_ml;
     uint32_t cap  = reservoirCapacityMl();
+    ReservoirLevels lv = reservoirLevels(dose);
 
     JsonDocument doc;
     doc["success"]             = true;
@@ -844,9 +862,12 @@ static void sendReserveConfig(AsyncWebServerRequest* request) {
     doc["ml_per_mm"]           = reservoirMlPerMm();
     doc["capacity_ml"]         = cap;
     doc["dose_ml"]             = dose;
-    doc["portions"]            = dose ? cap / dose : 0;
+    doc["full_ml"]             = lv.fullMl;     // rounded down to whole portions
+    doc["hidden_ml"]           = lv.hiddenMl;   // safety bottom, not shown in the monitor
+    doc["usable_ml"]           = lv.usableMl;
+    doc["low_ml"]              = lv.lowMl;
     doc["low_pct"]             = RESERVE_LOW_PCT_FIXED;
-    doc["empty_pct"]           = RESERVE_EMPTY_PCT_FIXED;
+    doc["hidden_pct"]          = RESERVE_HIDDEN_PCT_FIXED;
     const char* warn = reservoirConfigWarning(c);
     if (warn) doc["warning"] = warn;
     String resp; serializeJson(doc, resp);

@@ -92,6 +92,22 @@ uint32_t reservoirCapacityMl() {
     return (uint32_t)lroundf(reservoirMlPerMm() * g_cfg.marker_level_mm);
 }
 
+// ceil(ml × pct / 100) rounded up to a whole number of portions
+static uint32_t pctUpToPortions(uint32_t ml, uint32_t pct, uint32_t dose) {
+    uint32_t den = 100u * dose;
+    return (ml * pct + den - 1) / den * dose;
+}
+
+ReservoirLevels reservoirLevels(uint16_t doseMl) {
+    uint32_t dose = doseMl ? doseMl : 1;
+    ReservoirLevels l;
+    l.fullMl   = reservoirCapacityMl() / dose * dose;
+    l.hiddenMl = pctUpToPortions(l.fullMl, RESERVE_HIDDEN_PCT_FIXED, dose);
+    l.usableMl = l.fullMl - l.hiddenMl;
+    l.lowMl    = pctUpToPortions(l.usableMl, RESERVE_LOW_PCT_FIXED, dose);
+    return l;
+}
+
 bool useLevelSensor() {
     return g_cfg.flags & RESERVOIR_FLAG_USE_SENSOR;
 }

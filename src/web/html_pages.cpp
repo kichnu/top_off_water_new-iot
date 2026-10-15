@@ -470,6 +470,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
         }
         @media (max-width: 480px) {
             .pump-controls { grid-template-columns: repeat(1, 1fr); }
+
         }
         .btn-service {
             background: rgba(249,115,22,0.10); border: 1px solid rgba(249,115,22,0.35);
@@ -670,6 +671,92 @@ const char* DASHBOARD_HTML = R"rawliteral(
             text-align: center;
         }
 
+        /* Inset panel inside a card (reserve, rolling 24h) */
+        .panel-box {
+            background: var(--bg-input);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            margin-bottom: 10px;
+        }
+
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 6px;
+        }
+
+        .panel-title {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .panel-value          { font-size: 0.8rem; color: var(--text-secondary); }
+        .panel-value.is-muted { color: var(--text-muted); }
+        .panel-value.is-warn  { color: var(--accent-yellow); }
+        .panel-value.is-alarm { color: var(--accent-red); }
+
+        .panel-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            align-items: center;
+        }
+
+        .panel-row input { flex: 1; min-width: 0; }
+
+        .res-meta {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        /* Source-water reserve: one fixed-size dot per portion. wrap-reverse puts
+           the first portions in the bottom row, so the dots fill the container
+           bottom-up like water; its height follows the number of dots. */
+        .res-bar-wrap {
+            --res-dot: 12px;
+            --res-gap: 4px;
+        }
+
+        .res-bar {
+            display: flex;
+            flex-wrap: wrap-reverse;
+            align-content: flex-start;
+            gap: var(--res-gap);
+            width: 100%;
+        }
+
+        .res-seg {
+            flex: 0 0 var(--res-dot);
+            width: var(--res-dot);
+            height: var(--res-dot);
+            display: flex;
+            align-items: flex-end;
+            background: var(--bg-primary);
+            border-radius: 50%;
+            overflow: hidden;
+        }
+
+
+        .res-seg-fill {
+            width: 100%;
+            height: 0%;
+            transition: height 0.3s, background 0.3s;
+        }
+
+        .res-seg-fill { background: linear-gradient(0deg, var(--accent-blue), var(--accent-cyan)); }
+
+        /* Reserve range (bottom portions): permanently yellow, also when used up */
+        .res-seg.in-reserve                { background: rgba(251,191,36,0.18); }
+        .res-seg.in-reserve .res-seg-fill  { background: var(--accent-yellow); }
+
+        /* Empty: nothing usable left — all dots get a red ring */
+        .res-bar.zone-empty .res-seg       { box-shadow: inset 0 0 0 1px rgba(248,113,113,0.6); }
+
         /* ===== FOURTH CARD: Pump Settings ===== */
         .settings-row {
             display: grid;
@@ -846,14 +933,24 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 <button class="btn btn-secondary" onclick="loadCycleHistory()" id="loadCyclesBtn" style="flex:1;">Load History</button>
                 <button class="btn btn-secondary" onclick="deleteCycleHistory()" id="deleteCyclesBtn" style="flex:1;color:#f87171;border-color:rgba(248,113,113,0.3);">Delete Data</button>
             </div>
-            <div style="background:var(--bg-input);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
-                    <span style="font-size:0.72rem;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;text-transform:uppercase;">Rolling 24h Refill</span>
-                    <span id="volumeText" style="font-size:0.8rem;color:var(--text-secondary);">0 ml / 2000 ml</span>
+            <div class="panel-box">
+                <div class="panel-head">
+                    <span class="panel-title">Source Water Reserve</span>
+                    <span class="panel-value" id="resText">&#8212;</span>
+                </div>
+                <div class="res-bar-wrap" id="resBarWrap">
+                    <div class="res-bar" id="resBar"></div>
+                </div>
+                <div class="res-meta" id="resMeta"></div>
+            </div>
+            <div class="panel-box">
+                <div class="panel-head">
+                    <span class="panel-title">Rolling 24h Refill</span>
+                    <span class="panel-value" id="volumeText">0 ml / 2000 ml</span>
                 </div>
                 <div class="volume-bar"><div class="volume-bar-fill" id="volumeBarFill"></div></div>
-                <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
-                    <input type="number" id="dailyLimitInput" min="100" max="10000" step="100" placeholder="limit ml" style="flex:1;min-width:0;">
+                <div class="panel-row">
+                    <input type="number" id="dailyLimitInput" min="100" max="10000" step="100" placeholder="limit ml">
                     <button class="btn btn-secondary btn-small" onclick="setDailyLimit()">Set</button>
                     <button class="btn btn-off btn-small" onclick="resetDailyVolume()">Reset</button>
                 </div>
@@ -1306,6 +1403,89 @@ const char* DASHBOARD_HTML = R"rawliteral(
         }
 
         // ============================================
+        // RESERVE BARGRAPH
+        // ============================================
+        let resBarKey = '';
+
+        // One dot per portion (dose_ml), the first portion is the bottom-left dot;
+        // a remainder below one portion is the last dot (filled relative to its ml)
+        function buildReserveBar(capacity, dose) {
+            const bar = document.getElementById('resBar');
+            bar.innerHTML = '';
+            for (let from = 0; from < capacity; from += dose) {
+                const ml = Math.min(dose, capacity - from);
+                const seg = document.createElement('div');
+                seg.className = 'res-seg';
+                seg.innerHTML = '<div class="res-seg-fill"></div>';
+                seg.dataset.from = from;
+                seg.dataset.ml = ml;
+                bar.appendChild(seg);
+            }
+        }
+
+        function updateReserveBar(d) {
+            if (d.res_capacity_ml === undefined) return;
+            const wrap = document.getElementById('resBarWrap');
+            const text = document.getElementById('resText');
+            const meta = document.getElementById('resMeta');
+
+            // The bargraph needs the reservoir geometry saved in Settings
+            if (!d.res_configured) {
+                resBarKey = '';
+                wrap.style.display = 'none';
+                text.textContent = 'not configured';
+                text.className = 'panel-value is-muted';
+                meta.textContent = 'Enter the reservoir dimensions in Settings \u2192 Reservoir & Level Sensor';
+                return;
+            }
+            wrap.style.display = '';
+
+            const cap  = d.res_capacity_ml;
+            const dose = d.res_dose_ml || 1;
+            const key  = cap + '/' + dose;
+            if (key !== resBarKey) {
+                resBarKey = key;
+                buildReserveBar(cap, dose);
+            }
+            const bar = document.getElementById('resBar');
+            const zones = ['zone-ok', 'zone-low', 'zone-empty', 'zone-unknown'];
+            bar.className = 'res-bar ' + (zones[d.res_zone] || 'zone-unknown');
+            const lowMl = d.res_low_ml || 0;
+            const ml = d.res_known ? d.res_ml : 0;
+            bar.querySelectorAll('.res-seg').forEach(function(seg) {
+                const from = parseFloat(seg.dataset.from), segMl = parseFloat(seg.dataset.ml);
+                const f = Math.max(0, Math.min(1, (ml - from) / segMl));
+                seg.firstElementChild.style.height = (f * 100) + '%';
+                seg.classList.toggle('in-reserve', from < lowMl);
+            });
+
+            if (d.res_known) {
+                text.textContent = d.res_ml + ' ml \u00b7 ' + d.res_pct.toFixed(0) + '%';
+                text.className = 'panel-value' + (d.res_zone === 2 ? ' is-alarm' : d.res_zone === 1 ? ' is-warn' : '');
+            } else {
+                text.textContent = 'no reading';
+                text.className = 'panel-value is-muted';
+            }
+
+            const parts = [];
+            if (d.res_known) {
+                parts.push((d.res_ml / dose).toFixed(1) + ' / ' + Math.floor(cap / dose) + ' portions of ' + dose + ' ml');
+            } else {
+                parts.push(Math.floor(cap / dose) + ' portions of ' + dose + ' ml');
+            }
+            if (d.res_source === 'sensor') {
+                let s = 'sensor ' + (d.level_sensor || '?');
+                if (d.res_known) s += ', water ' + d.res_water_mm.toFixed(0) + ' mm';
+                if (d.level_age_s >= 0) s += ', ' + d.level_age_s + ' s ago';
+                parts.push(s);
+                if (d.level_settling) parts.push('settling after pump');
+            } else {
+                parts.push('counter (no level sensor)');
+            }
+            meta.textContent = parts.join(' \u00b7 ');
+        }
+
+        // ============================================
         // MAIN STATUS UPDATE
         // ============================================
         function updateStatus() {
@@ -1338,6 +1518,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         reservoirBadge.style.display = 'none';
                     }
                     const hasLowResWarning = hasReserveLow;
+                    updateReserveBar(data);
 
                     // Badges
                     updateSensorBadge("sensor1Badge", data.sensor_active);
@@ -1761,8 +1942,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
             document.getElementById('resDerived').textContent =
                 (d.saved ? '' : 'Defaults (not saved yet) \u2014 ') +
                 d.ml_per_mm.toFixed(1) + ' ml/mm \u2022 capacity ' + (d.capacity_ml / 1000).toFixed(2) + ' l' +
-                ' \u2022 ' + d.portions + ' portions of ' + d.dose_ml + ' ml' +
-                ' \u2022 low < ' + d.low_pct + '%, empty < ' + d.empty_pct + '%';
+                ' \u2022 usable ' + (d.usable_ml / d.dose_ml) + ' portions of ' + d.dose_ml + ' ml' +
+                ' (reserve ' + (d.low_ml / d.dose_ml) + ', ' + d.low_pct + '%)' +
+                ' \u2022 hidden safety bottom ' + d.hidden_ml + ' ml (' + d.hidden_pct + '%)';
             var w = document.getElementById('resWarning');
             w.textContent = d.warning || '';
             w.style.display = d.warning ? '' : 'none';

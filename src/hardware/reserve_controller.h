@@ -15,14 +15,6 @@
 #define RESERVE_STATE_MAGIC        0xC5
 #define RESERVE_FLAG_REF_VALID     0x01   // ref_dist_x10 / ref_ts hold a sensor reference
 
-// Refill measurement — series until the level at the sensor is stable
-// (partitioned tank equalizes slowly after pouring)
-#define REFILL_SERIES_GAP_MS        5000UL    // next on-demand series this long after the last one
-#define REFILL_WINDOW                  8      // stable window: last N valid series
-#define REFILL_STABLE_SPREAD_MM      3.0f     // max − min within the window
-#define REFILL_STABLE_TREND_MM       1.0f     // |mean of 2nd half − mean of 1st half| (still rising?)
-#define REFILL_TIMEOUT_MS         300000UL    // no stable window by then → no reading
-
 // Persisted in FRAM (FRAM_ADDR_RESERVE_STATE)
 struct ReserveState {
     uint32_t remaining_ml;    // from fullMl down; hidden bottom included
@@ -67,6 +59,9 @@ bool isReserveEmpty();   // 0 whole portions → alarm, no new portion
 
 // Subtracts ml after a pump run — clamps to 0, saves to FRAM
 void subtractReserveMl(uint16_t ml);
+
+uint32_t getReserveUsableMl();               // ml above the hidden bottom (current dose)
+void     setReserveReference(float distanceMm);   // new sensor reference (e.g. after calibration)
 
 // ---- Refill ("Reserve refilled") ----
 

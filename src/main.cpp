@@ -18,6 +18,8 @@
 #include "algorithm/water_algorithm.h"
 #include "hardware/buzzer_controller.h"
 #include "hardware/reserve_controller.h"
+#include "hardware/level_stable.h"
+#include "hardware/pump_calibration.h"
 #include "hardware/level_sensor.h"
 #include "hardware/level_test.h"
 #include "config/reservoir_config.h"
@@ -251,7 +253,8 @@ void loop() {
 
     // DAILY RESTART CHECK — o lokalnej północy (00:00)
     // Guard: minimalny uptime 30 min (zabezpieczenie przed pętlą restart jeśli start tuż przed północą)
-    if (g_restartAtTs > 0 && now > 1800000UL) {
+    // Postponed while a calibration or a refill measurement is in progress
+    if (g_restartAtTs > 0 && now > 1800000UL && !isPumpCalibrationActive() && !isReserveRefillActive()) {
         uint32_t nowTs = (uint32_t)getUnixTimestamp();
         if (nowTs >= g_restartAtTs) {
             Serial.println("=== DAILY RESTART: midnight reached ===");
@@ -272,7 +275,9 @@ void loop() {
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();
     updateLevelSensor();
+    updateStableLevel();
     updateReserveController();
+    updatePumpCalibration();
     updateLevelTest();
     waterAlgorithm.update();
 

@@ -24,9 +24,8 @@ void handleDirectPumpOn(AsyncWebServerRequest *request);
 void handleDirectPumpOff(AsyncWebServerRequest *request);
 void handlePumpSettings(AsyncWebServerRequest *request);
 
-// ATO calibration pump (bistable, user-controlled, safety timeout 1h)
-void handleCalibrationOn(AsyncWebServerRequest *request);
-void handleCalibrationOff(AsyncWebServerRequest *request);
+// Pump calibration in the working point — also the only way to set dose_ml
+void handlePumpCalibration(AsyncWebServerRequest *request);
 
 void handleSystemToggle(AsyncWebServerRequest *request);
 
@@ -40,7 +39,6 @@ void handleResetDailyVolume(AsyncWebServerRequest *request);
 // 🆕 NEW: Fill Water Max / Dose endpoints
 void handleGetFillWaterMax(AsyncWebServerRequest* request);
 void handleSetFillWaterMax(AsyncWebServerRequest* request);  // sets daily_limit_ml
-void handleSetDose(AsyncWebServerRequest* request);          // sets dose_ml
 
 // Cycle History endpoints
 void handleGetCycleHistory(AsyncWebServerRequest* request);

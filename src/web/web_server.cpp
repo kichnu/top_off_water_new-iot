@@ -22,10 +22,9 @@ void initWebServer() {
     server.on("/api/status", HTTP_GET, handleStatus);
     server.on("/api/pump/direct-on", HTTP_POST, handleDirectPumpOn);
     server.on("/api/pump/direct-off", HTTP_POST, handleDirectPumpOff);
-    server.on("/api/pump/calibration-on", HTTP_POST, handleCalibrationOn);
-    server.on("/api/pump/calibration-off", HTTP_POST, handleCalibrationOff);
+    server.on("/api/pump/calibration", HTTP_POST, handlePumpCalibration);   // guided portion calibration
     server.on("/api/pump/stop", HTTP_POST, handlePumpStop);
-    server.on("/api/pump-settings", HTTP_GET | HTTP_POST, handlePumpSettings);
+    server.on("/api/pump-settings", HTTP_GET, handlePumpSettings);
     
     server.on("/api/system-toggle", HTTP_GET | HTTP_POST, handleSystemToggle);
     
@@ -39,7 +38,6 @@ void initWebServer() {
     // Fill Water Max / Dose endpoints
     server.on("/api/fill-water-max", HTTP_GET, handleGetFillWaterMax);
     server.on("/api/set-fill-water-max", HTTP_POST, handleSetFillWaterMax);  // daily_limit_ml
-    server.on("/api/set-dose", HTTP_POST, handleSetDose);                    // dose_ml
 
     // Cycle History endpoints
     server.on("/api/cycle-history",       HTTP_GET,  handleGetCycleHistory);

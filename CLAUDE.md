@@ -54,8 +54,10 @@ hardware/           Hardware abstraction layer
   fram_constants.h     Shared FRAM magic, version, field size constants
   fram_controller.*    FRAM memory management (all persistent data)
   hardware_pins.h      GPIO pin definitions
-  level_sensor.*       VL53L4CD ToF reservoir level — non-blocking sample series (diagnostics stage)
-  pump_controller.*    ATO pump relay control (auto + direct/manual)
+  level_sensor.*       VL53L4CD ToF reservoir level — non-blocking sample series
+  level_stable.*       Measurement until the level is stable (refill, calibration)
+  pump_calibration.*   Guided portion calibration (10 runs, portion time in ms, FRAM in ReservoirConfig)
+  pump_controller.*    ATO pump relay control (auto + direct/manual), run end cut by esp_timer (ms)
   reserve_controller.* Source-water reserve: portion counter + refill measurement, FRAM-persisted
   rtc_controller.*     DS3231 RTC with NTP sync
   water_sensors.*      Float sensor debouncing (ATO)
@@ -99,7 +101,7 @@ entirely — separate code path in `pump_controller`, not a state of
 
 Key parameters in `algorithm_config.h`:
 - `DEBOUNCE_INTERVAL_MS` (1000ms) + `DEBOUNCE_COUNTER` (10) = 10s effective debounce
-- `DEFAULT_DOSE_ML` (150ml) - fixed dose per cycle
+- `DEFAULT_DOSE_ML` (150ml) - fixed dose per cycle; changed only via the pump calibration, pump time = calibrated portion ms
 - `DEFAULT_DAILY_LIMIT_ML` (2000ml) - daily safety limit
 - No bootstrap gate — the EMA alarm score accumulates from the first cycle (see `README`)
 
@@ -111,7 +113,7 @@ Defined in `hardware/fram_controller.h`:
 - `0x0500+`: Water system data (daily volume — see `README`)
 - `0x0560-0x0589`: TopOffConfig (40B + 2B checksum), magic=0xA8
 - `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
-- `0x05A2-0x05C3`: ReservoirConfig (32B + 2B checksum), magic=0xB3
+- `0x05A2-0x05C3`: ReservoirConfig incl. PumpCalibration (32B + 2B checksum), magic=0xB3
 - `0x05C4-0x05D5`: ReserveState — portion counter + sensor reference (16B + 2B checksum), magic=0xC5
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 
@@ -148,8 +150,8 @@ ATO pump:
 - `POST /api/pump/direct-on` — manual pump on (bypass algorithm)
 - `POST /api/pump/direct-off` — manual pump off
 - `POST /api/pump/stop` — emergency stop
-- `GET|POST /api/pump-settings` — pump calibration (`volume_per_second`)
-- `POST /api/pump/calibration-on` / `POST /api/pump/calibration-off` — calibration pump run (bistable, 1h safety timeout)
+- `GET  /api/pump-settings` — `volume_per_second` (derived from the calibration)
+- `POST /api/pump/calibration` — guided portion calibration (`start&dose_ml`, `run`, `stop`, `confirm`, `cancel`); the only way to change dose_ml
 
 History/volumes:
 - `GET  /api/cycle-history` — ring buffer (60 records, newest-first)
@@ -158,7 +160,6 @@ History/volumes:
 - `POST /api/reset-daily-volume`
 - `GET  /api/fill-water-max` — daily_limit_ml and dose_ml
 - `POST /api/set-fill-water-max` — set daily_limit_ml
-- `POST /api/set-dose` — set dose_ml
 - `GET|POST /api/alg-config` — EMA/alarm-score parameters
 - `GET|POST /api/reserve-config` — reservoir geometry, marker tolerance, portion pause, level sensor on/off
 - `POST /api/reserve/refill` — "Reserve refilled": counter full (sensor off) or level measurement + user decision (sensor on)

@@ -16,6 +16,8 @@
 #include "../config/credentials_manager.h"
 #include "../algorithm/water_algorithm.h"
 #include "../hardware/reserve_controller.h"
+#include "../hardware/level_stable.h"
+#include "../hardware/pump_calibration.h"
 #include "../hardware/level_sensor.h"
 #include "../config/reservoir_config.h"
 
@@ -204,13 +206,48 @@ void handleStatus(AsyncWebServerRequest* request) {
         json["res_dose_ml"]     = dose;
         json["level_settling"]  = isLevelSettling();
 
+        // Pump calibration
+        {
+            const PumpCalibration& pc = getReservoirConfig().cal;
+            const CalStatus& cs = getCalStatus();
+            json["cal_calibrated"] = isPumpCalibrated();
+            json["cal_portion_ms"] = getPortionMs();
+            json["cal_ts"]         = pc.ts;
+            json["cal_phase"]      = (uint8_t)cs.phase;   // 0=idle 1=before 2=ready 3=running 4=after 5=result
+            if (cs.note) json["cal_note"] = cs.note;
+            if (cs.phase != CAL_IDLE) {
+                json["cal_dose_ml"]    = cs.doseMl;
+                json["cal_runs"]       = cs.runs;
+                json["cal_runs_total"] = CAL_RUNS;
+                json["cal_pause_left"] = cs.pauseLeftS;
+                json["cal_run_ms"]     = cs.runElapsedMs;
+                json["cal_sensor"]     = cs.sensor;
+                JsonArray arr = json["cal_times"].to<JsonArray>();
+                for (uint8_t i = 0; i < cs.runs; i++) arr.add(cs.runMs[i]);
+                if (cs.phase == CAL_BEFORE || cs.phase == CAL_AFTER) {
+                    const StableLevel& sl = getStableLevel();
+                    json["cal_lvl_wait"]   = sl.state == STABLE_WAIT;
+                    json["cal_lvl_series"] = sl.series;
+                    json["cal_lvl_window"] = STABLE_WINDOW;
+                    json["cal_lvl_s"]      = sl.elapsedS;
+                }
+                if (cs.phase == CAL_RESULT) {
+                    json["cal_median_ms"] = cs.medianMs;
+                    json["cal_min_ms"]    = cs.minMs;
+                    json["cal_max_ms"]    = cs.maxMs;
+                    json["cal_sd_ms"]     = cs.sdMs;
+                    if (cs.hasSensorMl) json["cal_sensor_ml"] = cs.sensorMl;
+                }
+            }
+        }
+
         // Refill measurement ("Reserve refilled")
         const RefillStatus& rs = getRefillStatus();
         json["refill_phase"] = (uint8_t)rs.phase;     // 0=idle 1=measuring 2=result
         if (rs.phase != REFILL_IDLE) {
             json["refill_result"]    = (uint8_t)rs.result;   // 1=ok 2=mismatch 3=no reading
             json["refill_series"]    = rs.series;
-            json["refill_window"]    = REFILL_WINDOW;
+            json["refill_window"]    = STABLE_WINDOW;
             json["refill_elapsed_s"] = rs.elapsedS;
             json["refill_dist_mm"]   = rs.distanceMm;
             json["refill_expect_mm"] = rs.expectedMm;
@@ -268,9 +305,9 @@ void handleDirectPumpOn(AsyncWebServerRequest* request) {
             "{\"success\":false,\"error\":\"Reserve empty — refill the reservoir\"}");
         return;
     }
-    if (isReserveRefillActive()) {
+    if (isReserveRefillActive() || isPumpCalibrationActive()) {
         request->send(409, "application/json",
-            "{\"success\":false,\"error\":\"Refill measurement in progress\"}");
+            "{\"success\":false,\"error\":\"Refill measurement or calibration in progress\"}");
         return;
     }
 
@@ -304,42 +341,6 @@ void handleDirectPumpOff(AsyncWebServerRequest* request) {
     JsonDocument json;
     json["success"] = true;
 
-    String response;
-    serializeJson(json, response);
-    request->send(200, "application/json", response);
-}
-
-void handleCalibrationOn(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-
-    if (isReserveRefillActive()) {
-        request->send(409, "application/json",
-            "{\"success\":false,\"error\":\"Refill measurement in progress\"}");
-        return;
-    }
-
-    bool success = directPumpOn(CALIBRATION_SAFETY_TIMEOUT_S);
-
-    JsonDocument json;
-    json["success"] = success;
-    String response;
-    serializeJson(json, response);
-    request->send(200, "application/json", response);
-}
-
-void handleCalibrationOff(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-
-    directPumpOff();
-
-    JsonDocument json;
-    json["success"] = true;
     String response;
     serializeJson(json, response);
     request->send(200, "application/json", response);
@@ -383,35 +384,6 @@ void handlePumpSettings(AsyncWebServerRequest* request) {
         serializeJson(json, response);
         request->send(200, "application/json", response);
         
-    } else if (request->method() == HTTP_POST) {
-        if (!request->hasParam("volume_per_second", true)) {
-            request->send(400, "application/json", "{\"success\":false,\"error\":\"No volume_per_second parameter\"}");
-            return;
-        }
-        
-        String volumeStr = request->getParam("volume_per_second", true)->value();
-        float newVolume = volumeStr.toFloat();
-        
-        if (newVolume < 0.003 || newVolume > 100) {
-            request->send(400, "application/json", "{\"success\":false,\"error\":\"Value must be between 0.1-3000 ml/30s\"}");
-            return;
-        }
-        
-        currentPumpSettings.volumePerSecond = newVolume;
-
-        // Save to NVS (non-volatile storage)
-        saveVolumeToNVS();
-        
-        LOG_INFO("Volume per second updated to %.1f ml/s", newVolume);
-        
-        JsonDocument response;
-        response["success"] = true;
-        response["volume_per_second"] = newVolume;
-        response["message"] = "Volume per second updated successfully";
-        
-        String responseStr;
-        serializeJson(response, responseStr);
-        request->send(200, "application/json", responseStr);
     }
 }
 
@@ -435,6 +407,11 @@ void handleSystemToggle(AsyncWebServerRequest* request) {
         request->send(200, "application/json", response);
 
     } else if (request->method() == HTTP_POST) {
+        if (isPumpCalibrationActive()) {
+            request->send(409, "application/json",
+                "{\"success\":false,\"error\":\"Pump calibration in progress — Service Mode required\"}");
+            return;
+        }
         bool currentlyDisabled = isSystemDisabled();
         setSystemState(currentlyDisabled);  // toggle
 
@@ -597,36 +574,6 @@ void handleSetFillWaterMax(AsyncWebServerRequest* request) {
     request->send(200, "application/json", response);
 }
 
-void handleSetDose(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
-        return;
-    }
-
-    if (!request->hasParam("value", true)) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing value parameter\"}");
-        return;
-    }
-
-    int value = request->getParam("value", true)->value().toInt();
-
-    if (value < 1 || value > 2000) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"Value must be 1-2000 ml\"}");
-        return;
-    }
-
-    TopOffConfig cfg = waterAlgorithm.getConfig();
-    cfg.dose_ml = (uint16_t)value;
-    waterAlgorithm.setConfig(cfg);
-
-    JsonDocument json;
-    json["success"] = true;
-    json["dose_ml"] = waterAlgorithm.getConfig().dose_ml;
-
-    String response;
-    serializeJson(json, response);
-    request->send(200, "application/json", response);
-}
 
 // ===============================
 // TOP-OFF HISTORY HANDLER
@@ -952,6 +899,39 @@ void handleReserveRefill(AsyncWebServerRequest* request) {
     } else {
         err = reserveRefillAction(action);
     }
+    doc["success"] = (err == nullptr);
+    if (err) doc["error"] = err;
+    String resp; serializeJson(doc, resp);
+    request->send(err ? 409 : 200, "application/json", resp);
+}
+
+// ===============================
+// PUMP CALIBRATION HANDLER
+// POST action=start&dose_ml=N — first step: the portion, then the procedure
+//      action=run / stop     — one run (pump on / user stop at the vessel mark)
+//      action=confirm        — save the portion, its time and ml/s
+//      action=cancel
+// ===============================
+
+void handlePumpCalibration(AsyncWebServerRequest* request) {
+    if (!checkAuthentication(request)) {
+        request->send(401, "text/plain", "Unauthorized");
+        return;
+    }
+
+    String action = request->hasParam("action", true)
+        ? request->getParam("action", true)->value() : String("");
+
+    const char* err;
+    if (action == "start") {
+        long dose = request->hasParam("dose_ml", true)
+            ? request->getParam("dose_ml", true)->value().toInt() : 0;
+        err = startPumpCalibration((uint16_t)constrain(dose, 0L, 65535L));
+    } else {
+        err = pumpCalibrationAction(action);
+    }
+
+    JsonDocument doc;
     doc["success"] = (err == nullptr);
     if (err) doc["error"] = err;
     String resp; serializeJson(doc, resp);

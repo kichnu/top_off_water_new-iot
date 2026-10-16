@@ -2,6 +2,8 @@
 #include <math.h>
 #include "fram_controller.h"
 #include "level_sensor.h"
+#include "level_stable.h"
+#include "pump_calibration.h"
 #include "pump_controller.h"
 #include "rtc_controller.h"
 #include "../config/reservoir_config.h"
@@ -11,14 +13,8 @@
 static ReserveState g_st       = {};
 static bool         g_refilled = false;
 
-// Refill measurement
+// Refill measurement (level_stable)
 static RefillStatus g_refill      = {};
-static uint32_t     g_refillStart = 0;
-static uint32_t     g_lastCount   = 0;
-static uint32_t     g_lastSeries  = 0;   // millis() of the last completed / requested series
-static bool         g_pending     = false;
-static float        g_win[REFILL_WINDOW];
-static uint8_t      g_winN        = 0;   // valid series collected (window holds the last ones)
 
 static uint16_t currentDose() {
     uint16_t d = waterAlgorithm.getConfig().dose_ml;
@@ -70,6 +66,18 @@ void subtractReserveMl(uint16_t ml) {
     LOG_INFO("Reserve: -%u ml → %lu ml remaining", ml, g_st.remaining_ml);
 }
 
+uint32_t getReserveUsableMl() {
+    return usableMl(reservoirLevels(currentDose()));
+}
+
+void setReserveReference(float distanceMm) {
+    g_st.ref_dist_x10 = (uint16_t)lroundf(distanceMm * 10.0f);
+    g_st.ref_ts       = getUnixTimestamp();
+    g_st.flags       |= RESERVE_FLAG_REF_VALID;
+    saveState();
+    LOG_INFO("Reserve: sensor reference %.1f mm", distanceMm);
+}
+
 ReserveView getReserveView(uint16_t doseMl) {
     ReserveView v = {};
     uint32_t dose = doseMl ? doseMl : 1;
@@ -102,9 +110,7 @@ ReserveView getReserveView(uint16_t doseMl) {
 static void commitFull(bool withRef) {
     g_st.remaining_ml = reservoirLevels(currentDose()).fullMl;
     if (withRef) {
-        g_st.ref_dist_x10 = (uint16_t)lroundf(g_refill.distanceMm * 10.0f);
-        g_st.ref_ts       = getUnixTimestamp();
-        g_st.flags       |= RESERVE_FLAG_REF_VALID;
+        setReserveReference(g_refill.distanceMm);
     } else {
         g_st.ref_dist_x10 = 0;
         g_st.ref_ts       = 0;
@@ -121,11 +127,7 @@ static void beginMeasurement() {
     g_refill.phase      = REFILL_MEASURING;
     const ReservoirConfig& c = getReservoirConfig();
     g_refill.expectedMm = (float)(c.sensor_to_bottom_mm - c.marker_level_mm);
-    g_refillStart = millis();
-    g_lastCount   = getLevelSeriesCount();
-    g_lastSeries  = 0;
-    g_pending     = false;
-    g_winN        = 0;
+    stableLevelStart(false);
     LOG_INFO("Refill: measuring the level (expected %.0f mm at the marker)", g_refill.expectedMm);
 }
 
@@ -165,71 +167,23 @@ static void finishMeasurement(RefillResult res, const char* note) {
     }
 }
 
-// Window = last REFILL_WINDOW valid series; stable → result
-static void evaluateWindow() {
-    if (g_winN < REFILL_WINDOW) return;
-    float mn = g_win[0], mx = g_win[0], sum = 0, s1 = 0, s2 = 0;
-    const uint8_t half = REFILL_WINDOW / 2;
-    for (uint8_t i = 0; i < REFILL_WINDOW; i++) {
-        float d = g_win[i];
-        if (d < mn) mn = d;
-        if (d > mx) mx = d;
-        sum += d;
-        if (i < half) s1 += d; else s2 += d;
-    }
-    g_refill.spreadMm   = mx - mn;
-    g_refill.distanceMm = sum / REFILL_WINDOW;
-    float trend = s2 / (REFILL_WINDOW - half) - s1 / half;
-    if (g_refill.spreadMm <= REFILL_STABLE_SPREAD_MM && fabsf(trend) <= REFILL_STABLE_TREND_MM) {
-        finishMeasurement(REFILL_RES_OK, nullptr);   // OK / MISMATCH decided there
-    }
-}
-
 void updateReserveController() {
     if (g_refill.phase != REFILL_MEASURING) return;
-    uint32_t now = millis();
-    g_refill.elapsedS = (now - g_refillStart) / 1000;
+    const StableLevel& sl = getStableLevel();
+    g_refill.elapsedS = sl.elapsedS;
+    g_refill.series   = sl.series;
+    g_refill.spreadMm = sl.spreadMm;
 
-    if (isPumpActive()) {
-        g_refill.phase = REFILL_IDLE;
-        LOG_WARNING("Refill: measurement aborted — pump started");
-        return;
-    }
-    if (getLevelSensorState() != LEVEL_SENSOR_OK) {
-        finishMeasurement(REFILL_RES_NO_READING, getLevelSensorState() == LEVEL_SENSOR_ABSENT
-                          ? "sensor not detected" : "sensor fault (bad series)");
-        return;
-    }
-
-    uint32_t cnt = getLevelSeriesCount();
-    if (cnt != g_lastCount) {
-        g_lastCount  = cnt;
-        g_lastSeries = now;
-        g_pending    = false;
-        const LevelSeries& s = getLastLevelSeries();
-        if (s.valid) {
-            if (g_winN < REFILL_WINDOW) {
-                g_win[g_winN++] = s.distance_mm;
-            } else {
-                memmove(g_win, g_win + 1, (REFILL_WINDOW - 1) * sizeof(float));
-                g_win[REFILL_WINDOW - 1] = s.distance_mm;
-            }
-            g_refill.series = g_winN;
-            evaluateWindow();
-            if (g_refill.phase != REFILL_MEASURING) return;
+    if (sl.state == STABLE_DONE) {
+        g_refill.distanceMm = sl.distanceMm;
+        finishMeasurement(REFILL_RES_OK, nullptr);   // OK / MISMATCH decided there
+    } else if (sl.state == STABLE_FAILED) {
+        if (sl.note && strcmp(sl.note, "pump started") == 0) {
+            g_refill.phase = REFILL_IDLE;
+            LOG_WARNING("Refill: measurement aborted — pump started");
+        } else {
+            finishMeasurement(REFILL_RES_NO_READING, sl.note);
         }
-    }
-
-    if (now - g_refillStart >= REFILL_TIMEOUT_MS) {
-        finishMeasurement(REFILL_RES_NO_READING, g_winN >= REFILL_WINDOW
-                          ? "level not stable within 5 min" : "too few valid series");
-        return;
-    }
-
-    if (!g_pending && (g_lastSeries == 0 || now - g_lastSeries >= REFILL_SERIES_GAP_MS)) {
-        requestLevelSeries();
-        g_pending    = true;
-        g_lastSeries = now;
     }
 }
 
@@ -237,6 +191,10 @@ bool startReserveRefill(const char** err) {
     *err = nullptr;
     if (isPumpActive()) {
         *err = "Pump running — wait until it stops";
+        return false;
+    }
+    if (isPumpCalibrationActive()) {
+        *err = "Pump calibration in progress";
         return false;
     }
     if (!useLevelSensor()) {
@@ -251,6 +209,7 @@ bool startReserveRefill(const char** err) {
 const char* reserveRefillAction(const String& action) {
     if (action == "cancel") {
         if (g_refill.phase == REFILL_IDLE) return "No refill in progress";
+        if (g_refill.phase == REFILL_MEASURING) stableLevelCancel();
         g_refill.phase = REFILL_IDLE;
         LOG_INFO("Refill: cancelled — counter unchanged");
         return nullptr;

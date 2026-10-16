@@ -115,10 +115,6 @@ static_assert(sizeof(TopOffConfig) == 40, "TopOffConfig must be exactly 40 bytes
 // POMOCNICZE OBLICZENIA
 // ============================================================
 
-inline uint16_t calculateDoseTime(uint16_t doseMl, float flowRateMlS) {
-    if (flowRateMlS <= 0.01f) return 60;
-    uint16_t t = (uint16_t)(doseMl / flowRateMlS);
-    return (t < 1) ? 1 : t;
-}
+// Portion time: getPortionMs() (hardware/pump_calibration.h)
 
 #endif // ALGORITHM_CONFIG_H

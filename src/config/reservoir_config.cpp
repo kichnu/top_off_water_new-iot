@@ -62,7 +62,8 @@ const char* setReservoirConfig(const ReservoirConfig& cfg) {
 
     ReservoirConfig c = cfg;
     c.magic = RESERVOIR_CONFIG_MAGIC;
-    memcpy(c._reserved, g_cfg._reserved, sizeof(c._reserved));   // not editable here
+    c.cal = g_cfg.cal;                                          // not editable here
+    memcpy(c._reserved, g_cfg._reserved, sizeof(c._reserved));
     if (!saveReservoirConfigToFRAM(c)) return "FRAM write failed";
 
     g_cfg   = c;
@@ -71,6 +72,16 @@ const char* setReservoirConfig(const ReservoirConfig& cfg) {
              c.length_mm, c.width_mm, c.sensor_to_bottom_mm, c.marker_level_mm, c.marker_tol_mm,
              c.portion_pause_s, (c.flags & RESERVOIR_FLAG_USE_SENSOR) ? "on" : "off (portion counting)");
     return nullptr;
+}
+
+bool setPumpCalibration(const PumpCalibration& cal) {
+    ReservoirConfig c = g_cfg;
+    c.cal   = cal;
+    c.magic = RESERVOIR_CONFIG_MAGIC;
+    if (!saveReservoirConfigToFRAM(c)) return false;
+    g_cfg   = c;
+    g_saved = true;
+    return true;
 }
 
 const char* reservoirConfigWarning(const ReservoirConfig& c) {

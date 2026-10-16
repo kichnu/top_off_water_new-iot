@@ -75,7 +75,18 @@ i kalibracji).
 5. Wynik: mediana i rozrzut czasów, czas porcji, porównanie N × porcja vs czujnik.
    Zatwierdź → zapis czasu porcji (ms) do FRAM.
 
-Zmiana `Single Dose ml` po kalibracji → kalibracja nieważna (ostrzeżenie w GUI).
+Ustalenia 2026-10-17 (wdrożone):
+- `Single Dose ml` zmienia się tylko w kalibracji — jej pierwszy krok po wejściu w procedurę
+  (pole usunięte z Algorithm Parameters, `/api/set-dose` usunięte). Wejście = Service Mode bez
+  automatycznego powrotu do Auto (przełącznik zablokowany do końca procedury).
+- Stara kalibracja (`calibration-on/off`, wpisywanie `volume_per_second`) usunięta;
+  `volume_per_second` = porcja / czas porcji, tylko do szacowania `direct-on`.
+- Czujnik wyłączony/niesprawny → kalibracja bez porównania (źródłem prawdy naczynie).
+  Czujnik włączony → pomiar przed/po zbierany do przyszłych analiz (log TCP + `sensor_ml`
+  w FRAM); rozbieżność tylko pokazywana.
+- Bez kalibracji dla bieżącej porcji algorytm liczy z ml/s (ostrzeżenie „NOT calibrated”).
+- Koniec porcji odcina jednorazowy `esp_timer` (dokładność ms, niezależnie od pętli 100 ms).
+- Przebieg > 300 s albo zatrzymanie pompy spoza kalibracji → przerwanie procedury.
 
 ## 6. Dolewka ręczna porcjami (System Control)
 
@@ -237,6 +248,6 @@ Ustalone:
    Potem display i dopracowanie GUI; narzędzia analizy dopiero, gdy kontrola nie sypie
    alarmami.
 4. Sprawdzenie przy znaczniku (sekcja 4).
-5. Kalibracja porcjami (sekcja 5) + czas pompy w ms w algorytmie.
+5. ✅ Kalibracja porcjami (sekcja 5) + czas pompy w ms w algorytmie (2026-10-17, przed 3b).
 6. Dolewka ręczna porcjami (sekcja 6).
 7. Buzzer — jeden alarm (sekcja 8).

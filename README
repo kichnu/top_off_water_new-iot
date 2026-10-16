@@ -54,7 +54,7 @@ STATE_IDLE
 STATE_DEBOUNCING
     |  debounce complete, reserve not empty
     v
-STATE_PUMPING     pump runs for: dose_ml / volume_per_second seconds
+STATE_PUMPING     pump runs for the calibrated portion time (ms; fallback dose_ml / volume_per_second)
     |  pump stops automatically
     v
 STATE_LOGGING     save TopOffRecord + EmaBlock to FRAM (5s)
@@ -84,6 +84,17 @@ After each cycle:
 Zones: `score < zone_green` (default 20) → green, `< zone_yellow` (default 50) → yellow, else → red (triggers `STATE_ERROR`). No bootstrap gate — the score accumulates from the very first cycle. After a reset, the alarm is disarmed and only re-arms once the score drops back below `zone_yellow` (hysteresis, prevents immediate re-trip).
 
 All of the above (`ema_alpha`, `ema_clamp`, `alarm_p1`, `alarm_p2`, `zone_green`, `zone_yellow`, `initial_ema`) are runtime-configurable via `GET/POST /api/alg-config`.
+
+## Pump Calibration
+
+The pump is calibrated in its working point: the portion (`dose_ml`) is pumped as a fixed time, which includes the start-up and the hose drain (a ml/s model does not fit these short runs). Settings → Pump Calibration & Single Dose (`src/hardware/pump_calibration.*`):
+1. Step 1 sets the portion (Single Dose ml). This is the only way to change it, so a new portion always gets a new calibration. Starting switches the system to Service Mode, which stays on until the user switches back to Auto.
+2. With the level sensor on, the level is measured until stable before the runs (data for later analysis only).
+3. 10 runs: Start pumps, and the user presses Stop when the measuring vessel reaches the portion mark. The firmware times the run in ms. The next run is allowed after `portion_pause_s`, and the vessel is emptied in between (not back into the reservoir). Each run subtracts one portion from the reserve counter.
+4. With the sensor on: 2 min quiet time, then the level is measured until stable again.
+5. The result shows the median, min/max and sd of the run times, plus the sensor drop vs 10 × portion. Confirm saves the median as the portion time, the portion, and the derived `volume_per_second` (used only to estimate direct pump runs). The level after the runs becomes the sensor reference.
+
+The pump end is cut by a one-shot `esp_timer`, so the run time is exact to the ms and does not depend on the loop() period. Without a calibration for the current portion, the ATO falls back to `dose_ml / volume_per_second` and the GUI shows "NOT calibrated".
 
 ## Reserve (Source Water) Tracking
 
@@ -163,10 +174,9 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 |---|---|---|
 | POST | `/api/pump/direct-on` | Manual ATO pump on, bypasses algorithm (`mode=monostable` → runs for the 120s safety timeout; default bistable → runs for `manualCycleSeconds`) |
 | POST | `/api/pump/direct-off` | Stop manual ATO pump |
-| POST | `/api/pump/calibration-on` | Start calibration pump run (bistable, 1h safety timeout) |
-| POST | `/api/pump/calibration-off` | Stop calibration pump run |
+| POST | `/api/pump/calibration` | Guided portion calibration: `action=start&dose_ml=N`, `run`, `stop`, `confirm`, `cancel`; progress/result in `/api/status` (`cal_*`) |
 | POST | `/api/pump/stop` | Emergency stop |
-| GET/POST | `/api/pump-settings` | Get/set `volume_per_second` (pump calibration) |
+| GET | `/api/pump-settings` | `volume_per_second` (derived from the calibration, used to estimate direct runs) |
 
 ### ATO Configuration
 
@@ -174,7 +184,6 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 |---|---|---|
 | GET | `/api/fill-water-max` | Get `dose_ml` and `daily_limit_ml` |
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
-| POST | `/api/set-dose` | Set single dose volume |
 | GET/POST | `/api/alg-config` | Get/set EMA + alarm-score parameters |
 | GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`), `marker_tol_mm`, `portion_pause_s`, `use_level_sensor`; returns derived `ml_per_mm`, `capacity_ml`, `portions` |
 | POST | `/api/reserve/refill` | `action=start` (sensor off: counter full; on: start the level measurement), `confirm`, `no_sensor`, `remeasure`, `cancel`; progress/result in `/api/status` (`refill_*`) |
@@ -287,7 +296,7 @@ Credentials are AES-256 encrypted before writing to FRAM. To reconfigure, repeat
 | Pump runs but no water | Check tube connections, pump direction, run calibration |
 | Repeated `BUZZER_ALARM` | Reserve empty — refill reservoir and press Cycle Reset |
 | `STATE_ERROR` in dashboard | Daily limit, red alert, or empty reserve — resolve cause, press Cycle Reset |
-| Pump timing wrong | Calibrate: run manual pump, measure ml output, set `volume_per_second = ml/seconds` in GUI |
+| Pump timing wrong | Run Settings → Pump Calibration & Single Dose (10 portions into a vessel with a mark) |
 | OTA upload fails: `Authentication Failed` | `OTA_PASSWORD` build flag and `--auth` flag must match — re-export in the same shell command as `pio run` |
 | OTA upload times out at 0% | Partition table only has one app slot — check `board_build.partitions` is `min_spiffs.csv`, not `huge_app.csv` |
 
@@ -333,7 +342,7 @@ Defined in `src/hardware/fram_controller.h` (unified layout, shared with the cre
   0x0520–0x0529   (unused — former reserve volume ml counter)
   0x0560–0x0589   TopOffConfig (40 bytes + 2B checksum, magic 0xA8)
   0x0590–0x05A1   EmaBlock (16 bytes + 2B checksum)
-  0x05A2–0x05C3   ReservoirConfig (32 bytes + 2B checksum, magic 0xB3)
+  0x05A2–0x05C3   ReservoirConfig incl. PumpCalibration (32 bytes + 2B checksum, magic 0xB3)
   0x05C4–0x05D5   ReserveState: remaining ml + sensor reference (16 bytes + 2B checksum, magic 0xC5)
   0x0600–0x0603   Top-off ring buffer count + write pointer
   0x0610–0x0AC0   Top-off ring buffer (60 × TopOffRecord, 20 bytes each)

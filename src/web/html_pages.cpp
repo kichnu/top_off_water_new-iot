@@ -754,6 +754,20 @@ const char* DASHBOARD_HTML = R"rawliteral(
         .res-seg.in-reserve                { background: rgba(251,191,36,0.18); }
         .res-seg.in-reserve .res-seg-fill  { background: var(--accent-yellow); }
 
+        /* Refill measurement / result box */
+        .refill-box {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+        }
+        .refill-box.is-ok    { border-color: rgba(34,197,94,0.5); }
+        .refill-box.is-warn  { border-color: rgba(251,191,36,0.5); }
+        .refill-box.is-alarm { border-color: rgba(248,113,113,0.5); }
+        .refill-box .panel-row { flex-wrap: wrap; }
+
         /* Empty: nothing usable left — all dots get a red ring */
         .res-bar.zone-empty .res-seg       { box-shadow: inset 0 0 0 1px rgba(248,113,113,0.6); }
 
@@ -942,6 +956,13 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     <div class="res-bar" id="resBar"></div>
                 </div>
                 <div class="res-meta" id="resMeta"></div>
+                <div class="panel-row">
+                    <button class="btn btn-secondary btn-small" id="refillBtn" onclick="reserveRefill()" style="flex:1;">Reserve refilled</button>
+                </div>
+                <div class="refill-box" id="refillBox" style="display:none;">
+                    <div id="refillText"></div>
+                    <div class="panel-row" id="refillActions"></div>
+                </div>
             </div>
             <div class="panel-box">
                 <div class="panel-head">
@@ -996,9 +1017,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         <label style="font-size:0.72rem;color:var(--text-muted);">Chart Y-Max ml/h (blank=auto)
                             <input type="number" id="algChartYMax" min="10" max="5000" step="10"
                                 placeholder="auto" style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Reserve Volume ml (1–10000)
-                            <input type="number" id="algReserveMl" min="1" max="10000" step="10"
-                                style="width:100%;margin-top:3px;"></label>
                         <label style="font-size:0.72rem;color:var(--text-muted);">Single Dose ml (1–2000)
                             <input type="number" id="doseInput" min="1" max="2000" step="1"
                                 style="width:100%;margin-top:3px;"></label>
@@ -1039,7 +1057,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                             <input type="number" id="resPause" min="15" max="120" step="1"
                                 style="width:100%;margin-top:3px;"></label>
                         <label style="font-size:0.72rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="resUseSensor"> Use level sensor (off: portion counting, pump stops at low)</label>
+                            <input type="checkbox" id="resUseSensor"> Level sensor: verify doses and refills (off: portion counting only)</label>
                     </div>
                     <div id="resDerived" style="font-size:0.72rem;color:var(--text-secondary);margin-top:8px;"></div>
                     <div id="resWarning" style="display:none;color:#fbbf24;font-size:0.72rem;margin-top:6px;"></div>
@@ -1428,6 +1446,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             const wrap = document.getElementById('resBarWrap');
             const text = document.getElementById('resText');
             const meta = document.getElementById('resMeta');
+            updateRefillBox(d);
 
             // The bargraph needs the reservoir geometry saved in Settings
             if (!d.res_configured) {
@@ -1451,7 +1470,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             const zones = ['zone-ok', 'zone-low', 'zone-empty', 'zone-unknown'];
             bar.className = 'res-bar ' + (zones[d.res_zone] || 'zone-unknown');
             const lowMl = d.res_low_ml || 0;
-            const ml = d.res_known ? d.res_ml : 0;
+            const ml = d.res_ml;
             bar.querySelectorAll('.res-seg').forEach(function(seg) {
                 const from = parseFloat(seg.dataset.from), segMl = parseFloat(seg.dataset.ml);
                 const f = Math.max(0, Math.min(1, (ml - from) / segMl));
@@ -1459,30 +1478,95 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 seg.classList.toggle('in-reserve', from < lowMl);
             });
 
-            if (d.res_known) {
-                text.textContent = d.res_ml + ' ml \u00b7 ' + d.res_pct.toFixed(0) + '%';
-                text.className = 'panel-value' + (d.res_zone === 2 ? ' is-alarm' : d.res_zone === 1 ? ' is-warn' : '');
-            } else {
-                text.textContent = 'no reading';
-                text.className = 'panel-value is-muted';
-            }
+            text.textContent = d.res_portions + ' / ' + Math.floor(cap / dose) + ' portions';
+            text.className = 'panel-value' + (d.res_zone === 2 ? ' is-alarm' : d.res_zone === 1 ? ' is-warn' : '');
 
-            const parts = [];
-            if (d.res_known) {
-                parts.push((d.res_ml / dose).toFixed(1) + ' / ' + Math.floor(cap / dose) + ' portions of ' + dose + ' ml');
-            } else {
-                parts.push(Math.floor(cap / dose) + ' portions of ' + dose + ' ml');
-            }
-            if (d.res_source === 'sensor') {
+            const parts = [d.res_ml + ' ml \u00b7 ' + d.res_pct.toFixed(0) + '% \u00b7 portion ' + dose + ' ml'];
+            if (d.res_sensor) {
                 let s = 'sensor ' + (d.level_sensor || '?');
-                if (d.res_known) s += ', water ' + d.res_water_mm.toFixed(0) + ' mm';
+                if (d.res_water_mm > 0) s += ', water ' + d.res_water_mm.toFixed(0) + ' mm';
                 if (d.level_age_s >= 0) s += ', ' + d.level_age_s + ' s ago';
                 parts.push(s);
                 if (d.level_settling) parts.push('settling after pump');
             } else {
-                parts.push('counter (no level sensor)');
+                parts.push('portion counting (level sensor off)');
             }
             meta.textContent = parts.join(' \u00b7 ');
+        }
+
+        // ============================================
+        // RESERVE REFILL ("Reserve refilled" + level measurement)
+        // ============================================
+        let refillKey = '';
+        let lastStatus = null;
+
+        function refillPost(action) {
+            return secureFetch('api/reserve/refill', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: 'action=' + action
+            })
+            .then(function(r) { return r ? r.json() : null; })
+            .then(function(d) {
+                if (d && !d.success) alert(d.error || 'Refill failed');
+                updateStatus();
+                return d;
+            })
+            .catch(function(e) { console.error('refill error:', e); });
+        }
+
+        function reserveRefill() {
+            const sensor = lastStatus && lastStatus.res_sensor;
+            const msg = sensor
+                ? 'Reservoir filled up to the marker?\nThe level will be measured until stable (up to 5 min); the ATO pump waits meanwhile.'
+                : 'Reservoir filled up to the marker?\nThe portion counter will be set to full.';
+            if (!confirm(msg)) return;
+            refillPost('start');
+        }
+
+        function refillButton(label, action, cls) {
+            return '<button class="btn ' + (cls || 'btn-secondary') + ' btn-small" onclick="refillPost(\'' + action + '\')">' + label + '</button>';
+        }
+
+        function updateRefillBox(d) {
+            const box = document.getElementById('refillBox');
+            const btn = document.getElementById('refillBtn');
+            const phase = d.refill_phase || 0;
+            btn.disabled = phase !== 0;
+            if (phase === 0) { box.style.display = 'none'; refillKey = ''; return; }
+            box.style.display = '';
+
+            const txt = document.getElementById('refillText');
+            const act = document.getElementById('refillActions');
+            let key, html, cls = '';
+            if (phase === 1) {
+                txt.textContent = 'Measuring the level\u2026 stable series ' + d.refill_series + '/' + d.refill_window +
+                                  ' \u00b7 ' + d.refill_elapsed_s + ' s';
+                key = 'm';
+                html = refillButton('Cancel', 'cancel');
+            } else {
+                const r = d.refill_result;
+                let t;
+                if (r === 3) {
+                    cls = 'is-alarm';
+                    t = 'No valid reading' + (d.refill_note ? ' \u2014 ' + d.refill_note : '') + '.';
+                } else {
+                    const dev = d.refill_dev_mm;
+                    t = (r === 1 ? 'Level OK' : 'Level outside the tolerance') + ': ' +
+                        d.refill_dist_mm.toFixed(1) + ' mm (marker ' + d.refill_expect_mm.toFixed(0) + ' mm), ' +
+                        (dev >= 0 ? '+' : '') + dev.toFixed(1) + ' mm / ' + (d.refill_dev_ml >= 0 ? '+' : '') + d.refill_dev_ml + ' ml' +
+                        ' (\u00b1' + d.refill_tol_mm + ' mm), spread ' + d.refill_spread_mm.toFixed(1) + ' mm.';
+                    if (r === 2 && d.refill_note) t += ' ' + d.refill_note.charAt(0).toUpperCase() + d.refill_note.slice(1) + '.';
+                    cls = r === 1 ? 'is-ok' : (d.refill_suspect ? 'is-alarm' : 'is-warn');
+                }
+                txt.textContent = t;
+                key = 'r' + r;
+                if (r === 1)      html = refillButton('Confirm', 'confirm', 'btn-primary') + refillButton('Cancel', 'cancel');
+                else if (r === 2) html = refillButton('Remeasure', 'remeasure', 'btn-primary') + refillButton('Accept anyway', 'confirm') + refillButton('Cancel', 'cancel');
+                else              html = refillButton('Remeasure', 'remeasure', 'btn-primary') + refillButton('Accept without sensor', 'no_sensor') + refillButton('Cancel', 'cancel');
+            }
+            box.className = 'refill-box ' + cls;
+            if (key !== refillKey) { refillKey = key; act.innerHTML = html; }
         }
 
         // ============================================
@@ -1496,23 +1580,23 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 })
                 .then((data) => {
                     if (!data) return;
-                    
+                    lastStatus = data;
+
                     // Reserve alarm badges
                     const hasReserveLow   = !!data.reserve_low;
                     const hasReserveEmpty = !!data.reserve_empty;
-                    const reserveMl       = data.reserve_ml !== undefined ? data.reserve_ml : '\u2014';
                     const reservoirSep    = document.getElementById("reservoirSep");
                     const reservoirBadge  = document.getElementById("reservoirAlarmBadge");
                     if (hasReserveEmpty) {
                         reservoirSep.style.display   = '';
                         reservoirBadge.style.display = '';
                         reservoirBadge.className     = 'sub-danger';
-                        reservoirBadge.textContent   = '\u26a0 Reserve empty \u2014 refill & reset';
+                        reservoirBadge.textContent   = '\u26a0 Reserve empty \u2014 refill the reservoir';
                     } else if (hasReserveLow) {
                         reservoirSep.style.display   = '';
                         reservoirBadge.style.display = '';
                         reservoirBadge.className     = 'sub-warn';
-                        reservoirBadge.textContent   = '\u26a0 Low reservoir \u2014 ' + reserveMl + ' ml remaining';
+                        reservoirBadge.textContent   = '\u26a0 Reserve range \u2014 ' + data.res_portions + ' portions left';
                     } else {
                         reservoirSep.style.display   = 'none';
                         reservoirBadge.style.display = 'none';
@@ -1920,7 +2004,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         document.getElementById('algZoneYellow').value= d.zone_yellow;
                         document.getElementById('algInitEma').value   = d.initial_ema;
                         document.getElementById('algChartYMax').value = chartYMaxOverride !== null ? chartYMaxOverride : '';
-                        if (d.reserve_config_ml) document.getElementById('algReserveMl').value = d.reserve_config_ml;
                     })
                     .catch(function(e) { console.error('alg-config GET error:', e); });
                 loadVolumePerSecond();
@@ -2009,7 +2092,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var initEma = parseFloat(document.getElementById('algInitEma').value);
             var chartYMaxRaw = document.getElementById('algChartYMax').value.trim();
             var chartYMaxVal = chartYMaxRaw === '' ? NaN : parseFloat(chartYMaxRaw);
-            var reserveMl    = parseInt(document.getElementById('algReserveMl').value, 10);
             var dose         = parseInt(document.getElementById('doseInput').value, 10);
 
             var err = '';
@@ -2021,7 +2103,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             else if (isNaN(zYellow) || zYellow <= zGreen || zYellow > 500) err = 'Zone Yellow: must be > Zone Green and ≤ 500';
             else if (isNaN(initEma) || initEma < 1 || initEma > 500)   err = 'Initial EMA: 1–500 ml/h';
             else if (!isNaN(chartYMaxVal) && (chartYMaxVal < 10 || chartYMaxVal > 5000)) err = 'Chart Y-Max: 10–5000 ml/h (or blank for auto)';
-            else if (isNaN(reserveMl) || reserveMl < 1 || reserveMl > 10000) err = 'Reserve Volume: 1–10000 ml';
             else if (isNaN(dose) || dose < 1 || dose > 2000)           err = 'Single Dose: 1–2000 ml';
 
             if (err) {
@@ -2039,8 +2120,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                           '&alarm_p2='    + p2       +
                           '&zone_green='  + zGreen   +
                           '&zone_yellow=' + zYellow  +
-                          '&initial_ema=' + initEma  +
-                          '&reserve_ml='  + reserveMl;
+                          '&initial_ema=' + initEma;
 
             secureFetch('api/alg-config', {
                 method: 'POST',

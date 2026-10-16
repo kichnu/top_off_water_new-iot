@@ -170,8 +170,6 @@ void handleStatus(AsyncWebServerRequest* request) {
     // ============================================
     // RESERVE STATUS
     // ============================================
-    json["reserve_ml"]          = getReserveMl();
-    json["reserve_config_ml"]   = getReserveConfigMl();
     json["reserve_low"]         = isReserveLow();
     json["reserve_empty"]       = isReserveEmpty();
 
@@ -190,14 +188,14 @@ void handleStatus(AsyncWebServerRequest* request) {
         json["level_age_s"]       = ls.finished_ms ? (long)((millis() - ls.finished_ms) / 1000) : -1L;
     }
 
-    // Reserve level for the monitor bargraph (sensor or counter, see getReserveView)
+    // Reserve (portion counter) for the monitor bargraph
     {
         uint16_t    dose = waterAlgorithm.getConfig().dose_ml;
         ReserveView rv   = getReserveView(dose);
         json["res_configured"]  = isReservoirConfigSaved();
-        json["res_source"]      = rv.fromSensor ? "sensor" : "counter";
-        json["res_known"]       = rv.known;
+        json["res_sensor"]      = rv.sensorCheck;
         json["res_ml"]          = rv.ml;
+        json["res_portions"]    = rv.portions;
         json["res_capacity_ml"] = rv.capacityMl;
         json["res_pct"]         = rv.pct;
         json["res_water_mm"]    = rv.waterMm;
@@ -205,6 +203,24 @@ void handleStatus(AsyncWebServerRequest* request) {
         json["res_low_ml"]      = rv.lowMl;   // permanent yellow reserve range
         json["res_dose_ml"]     = dose;
         json["level_settling"]  = isLevelSettling();
+
+        // Refill measurement ("Reserve refilled")
+        const RefillStatus& rs = getRefillStatus();
+        json["refill_phase"] = (uint8_t)rs.phase;     // 0=idle 1=measuring 2=result
+        if (rs.phase != REFILL_IDLE) {
+            json["refill_result"]    = (uint8_t)rs.result;   // 1=ok 2=mismatch 3=no reading
+            json["refill_series"]    = rs.series;
+            json["refill_window"]    = REFILL_WINDOW;
+            json["refill_elapsed_s"] = rs.elapsedS;
+            json["refill_dist_mm"]   = rs.distanceMm;
+            json["refill_expect_mm"] = rs.expectedMm;
+            json["refill_dev_mm"]    = rs.deviationMm;
+            json["refill_dev_ml"]    = rs.deviationMl;
+            json["refill_spread_mm"] = rs.spreadMm;
+            json["refill_tol_mm"]    = getReservoirConfig().marker_tol_mm;
+            json["refill_suspect"]   = rs.sensorSuspect;
+            if (rs.note) json["refill_note"] = rs.note;
+        }
     }
     json["rtc_ts"]            = (uint32_t)getUnixTimestamp();
 
@@ -249,7 +265,12 @@ void handleDirectPumpOn(AsyncWebServerRequest* request) {
 
     if (isReserveEmpty()) {
         request->send(400, "application/json",
-            "{\"success\":false,\"error\":\"Reserve empty — refill reservoir and reset\"}");
+            "{\"success\":false,\"error\":\"Reserve empty — refill the reservoir\"}");
+        return;
+    }
+    if (isReserveRefillActive()) {
+        request->send(409, "application/json",
+            "{\"success\":false,\"error\":\"Refill measurement in progress\"}");
         return;
     }
 
@@ -291,6 +312,12 @@ void handleDirectPumpOff(AsyncWebServerRequest* request) {
 void handleCalibrationOn(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
         request->send(401, "text/plain", "Unauthorized");
+        return;
+    }
+
+    if (isReserveRefillActive()) {
+        request->send(409, "application/json",
+            "{\"success\":false,\"error\":\"Refill measurement in progress\"}");
         return;
     }
 
@@ -690,7 +717,6 @@ void handleSystemReset(AsyncWebServerRequest* request) {
         return;
     }
 
-    clearReserveAlarm();
     bool success = waterAlgorithm.resetSystem();
 
     JsonDocument json;
@@ -746,7 +772,6 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
         doc["zone_green"]     = cfg.zone_green;
         doc["zone_yellow"]    = cfg.zone_yellow;
         doc["initial_ema"]    = cfg.initial_ema;
-        doc["reserve_config_ml"] = getReserveConfigMl();
         String resp; serializeJson(doc, resp);
         request->send(200, "application/json", resp);
         return;
@@ -798,16 +823,6 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
         return;
     }
 
-    uint32_t reserveMl = getReserveConfigMl();
-    if (request->hasParam("reserve_ml", true)) {
-        long v = request->getParam("reserve_ml", true)->value().toInt();
-        if (v < 1 || v > 10000) {
-            request->send(400, "application/json", "{\"success\":false,\"error\":\"reserve_ml: 1–10000 ml\"}");
-            return;
-        }
-        reserveMl = (uint32_t)v;
-    }
-
     TopOffConfig cfg = waterAlgorithm.getConfig();
     cfg.ema_alpha   = alpha;
     cfg.ema_clamp   = clamp;
@@ -818,10 +833,6 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     cfg.initial_ema = initEma;
     waterAlgorithm.setConfig(cfg);
 
-    if (reserveMl != getReserveConfigMl()) {
-        setReserveConfigMl(reserveMl);
-    }
-
     JsonDocument doc;
     doc["success"]           = true;
     doc["ema_alpha"]         = cfg.ema_alpha;
@@ -831,7 +842,6 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     doc["zone_green"]        = cfg.zone_green;
     doc["zone_yellow"]       = cfg.zone_yellow;
     doc["initial_ema"]       = cfg.initial_ema;
-    doc["reserve_config_ml"] = getReserveConfigMl();
     String resp; serializeJson(doc, resp);
     request->send(200, "application/json", resp);
 }
@@ -915,4 +925,35 @@ void handleReserveConfig(AsyncWebServerRequest* request) {
     }
 
     sendReserveConfig(request);
+}
+
+// ===============================
+// RESERVE REFILL HANDLER
+// POST action=start     — sensor off: counter full; sensor on: start the measurement
+//      action=confirm   — accept the measured result (counter full, reference = reading)
+//      action=no_sensor — counter full, level sensor switched off
+//      action=remeasure / cancel
+// ===============================
+
+void handleReserveRefill(AsyncWebServerRequest* request) {
+    if (!checkAuthentication(request)) {
+        request->send(401, "text/plain", "Unauthorized");
+        return;
+    }
+
+    String action = request->hasParam("action", true)
+        ? request->getParam("action", true)->value() : String("start");
+
+    JsonDocument doc;
+    const char* err = nullptr;
+    if (action == "start") {
+        bool measuring = startReserveRefill(&err);
+        doc["measuring"] = measuring;
+    } else {
+        err = reserveRefillAction(action);
+    }
+    doc["success"] = (err == nullptr);
+    if (err) doc["error"] = err;
+    String resp; serializeJson(doc, resp);
+    request->send(err ? 409 : 200, "application/json", resp);
 }

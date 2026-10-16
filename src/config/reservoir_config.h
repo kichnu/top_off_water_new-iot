@@ -8,15 +8,14 @@
 // max water level (full reservoir).
 
 #define RESERVOIR_CONFIG_MAGIC        0xB3
-#define RESERVOIR_FLAG_USE_SENSOR     0x01   // reserve from the level sensor; off = portion counting
-                                             // (sensor still measures, no sensor alarms, pump stops at low)
+#define RESERVOIR_FLAG_USE_SENSOR     0x01   // level sensor verifies refills and doses; off = portion
+                                             // counting only (sensor still measures, no sensor alarms)
 
 // Fixed reserve thresholds, both rounded up to whole portions (see ReservoirLevels).
 // HIDDEN — % of the full capacity kept below "empty" for pump safety (intake
 //          height); never shown to the user, the usable range ends above it.
 // LOW    — % of the usable capacity shown as the permanent yellow reserve range.
-// With the sensor: low = warning, empty = alarm + pump stop.
-// Without the sensor (portion counting): pump stop + alarm already at low.
+// Both modes (portion counter): low = information only, 0 portions = alarm + pump stop.
 #define RESERVE_LOW_PCT_FIXED          30
 #define RESERVE_HIDDEN_PCT_FIXED        5
 

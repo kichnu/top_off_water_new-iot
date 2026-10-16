@@ -60,10 +60,8 @@ struct PumpCycle {
 #define FRAM_ADDR_LAST_RESET_UTC  (FRAM_ESP32_BASE + 0x1A)  // 4 bytes - uint32_t (było 12)
 #define FRAM_ADDR_DAILY_CHECKSUM  (FRAM_ESP32_BASE + 0x1E)  // 2 bytes - checksum
 \
-// 🆕 NEW: Available Volume (water reserve tracking)
-#define FRAM_ADDR_AVAIL_VOL_MAX      (FRAM_ESP32_BASE + 0x20)  // 4 bytes - uint32_t (ml)
-#define FRAM_ADDR_AVAIL_VOL_CURRENT  (FRAM_ESP32_BASE + 0x24)  // 4 bytes - uint32_t (ml)
-#define FRAM_ADDR_AVAIL_VOL_CHKSUM   (FRAM_ESP32_BASE + 0x28)  // 2 bytes - checksum
+// 0x0520–0x0529: former reserve volume (configured ml + current ml + checksum) — unused,
+// replaced by ReserveState at FRAM_ADDR_RESERVE_STATE
 
 // 🆕 NEW: Configurable daily limit (replaces hardcoded FILL_WATER_MAX)
 #define FRAM_ADDR_FILL_WATER_MAX     (FRAM_ESP32_BASE + 0x2A)  // 2 bytes - uint16_t (ml)
@@ -93,7 +91,11 @@ struct PumpCycle {
 
 // Reservoir geometry and level-sensor settings (ReservoirConfig) — 32 bytes
 #define FRAM_ADDR_RESERVOIR_CFG     0x05A2   // 32 bytes — ReservoirConfig struct (0x05A2–0x05C1)
-#define FRAM_ADDR_RESERVOIR_CHKSUM  0x05C2   // 2 bytes — checksum (free after it: 0x05C4–0x05FF)
+#define FRAM_ADDR_RESERVOIR_CHKSUM  0x05C2   // 2 bytes — checksum
+
+// Reserve portion counter + level-sensor reference (ReserveState) — 16 bytes
+#define FRAM_ADDR_RESERVE_STATE     0x05C4   // 16 bytes — ReserveState struct (0x05C4–0x05D3)
+#define FRAM_ADDR_RESERVE_CHKSUM    0x05D4   // 2 bytes — checksum (free after it: 0x05D6–0x05FF)
 
 // Ring buffer rekordów dolewek (TopOffRecord, 20 bajtów każdy)
 #define TOPOFF_HISTORY_SIZE         60       // Maksymalnie 60 rekordów (60×20=1200 bajtów)
@@ -159,6 +161,7 @@ struct TopOffRecord;
 struct EmaBlock;
 struct TopOffConfig;
 struct ReservoirConfig;
+struct ReserveState;
 
 // Ring buffer rekordów dolewek
 bool saveTopOffRecord(const TopOffRecord& record);
@@ -172,11 +175,9 @@ bool isTopOffRingBufferValid();    // false gdy count > TOPOFF_HISTORY_SIZE (leg
 bool saveEmaBlockToFRAM(const EmaBlock& ema);
 bool loadEmaBlockFromFRAM(EmaBlock& ema);
 
-// ===============================
-// RESERVE VOLUME (woda zapasowa)
-// ===============================
-bool saveReserveToFRAM(uint32_t configMl, uint32_t currentMl);
-bool loadReserveFromFRAM(uint32_t& configMl, uint32_t& currentMl);
+// Reserve portion counter + level-sensor reference
+bool saveReserveStateToFRAM(const ReserveState& st);
+bool loadReserveStateFromFRAM(ReserveState& st);
 
 // Konfiguracja algorytmu
 bool saveTopOffConfigToFRAM(const TopOffConfig& cfg);

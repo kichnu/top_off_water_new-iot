@@ -126,8 +126,8 @@ void setup() {
     initNVS();          // initNVS() wywołuje initFRAM() wewnętrznie (config.cpp)
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
-    initReserveController();
     initReservoirConfig();
+    initReserveController();   // needs the reservoir geometry and the dose
     // I2C bus reset after burst ring-buffer reads — ensures clean state for credentials and RTC.
     Wire.end();
     delay(10);
@@ -272,6 +272,7 @@ void loop() {
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();
     updateLevelSensor();
+    updateReserveController();
     updateLevelTest();
     waterAlgorithm.update();
 
@@ -285,12 +286,16 @@ void loop() {
             subtractReserveMl(directVol);
         }
 
-        // Buzzer mode — higher priority wins; every ATO error (state stays until
-        // reset from the GUI) sounds the alarm
+        // Reservoir refilled — the reserve-empty error has lost its cause
+        if (takeReserveRefilled() && waterAlgorithm.getState() == STATE_ERROR &&
+            waterAlgorithm.getLastError() == ERROR_LOW_RESERVOIR) {
+            waterAlgorithm.resetFromError();
+        }
+
+        // Buzzer — every ATO error (state stays until reset from the GUI) and
+        // 0 portions sound the alarm; the reserve range is GUI-only
         if (isReserveEmpty() || waterAlgorithm.getState() == STATE_ERROR) {
             setBuzzerMode(BUZZER_ALARM);
-        } else if (isReserveLow()) {
-            setBuzzerMode(BUZZER_WARNING);
         } else {
             setBuzzerMode(BUZZER_OFF);
         }

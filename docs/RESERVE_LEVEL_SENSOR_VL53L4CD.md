@@ -108,8 +108,25 @@ Czujnik włączony (checkbox zaznaczony) — dodatkowo kontrola w blokach rozł�
    + stop systemu jak przy braku wody, czeka na interwencję użytkownika.
 - Liczą się porcje ATO i ręczne. Kalibracja pompy i ręczna pompa ciągła (`direct-on`)
   unieważniają bieżący blok: licznik odejmuje ml z czasu pracy, nowe odniesienie.
-- Dolanie wody do rezerwy: osobny przycisk „Rezerwa uzupełniona” → licznik pełny + nowe
-  odniesienie. Bez kliknięcia czujnik zobaczy wzrost → poza tolerancją → alarm (celowo).
+- Dolanie wody do rezerwy: osobny przycisk „Rezerwa uzupełniona” (`Reserve refilled`) →
+  licznik pełny + nowe odniesienie. Bez kliknięcia czujnik zobaczy wzrost → poza tolerancją
+  → alarm (celowo). Ustalenia 2026-10-16 (wdrożone w 3a):
+  - Woda dolewana zawsze do znacznika — przycisk zawsze znaczy „pełny” (bez dolewek
+    częściowych i bez ustawiania licznika z pomiaru).
+  - Czujnik OFF → licznik pełny od razu.
+  - Czujnik ON → pomiar do stabilizacji (to samo co sekcja 4 — jeden przycisk): serie co
+    5 s, okno 8 ważnych serii, rozrzut ≤ 3 mm i brak trendu (średnia 2. połowy − 1. ≤ 1 mm),
+    limit 5 min; pompa ATO czeka, ręczna/kalibracja zablokowane, start pompy przerywa pomiar.
+    Wynik vs znacznik (tolerancja przy znaczniku):
+    A) w tolerancji → „Confirm”: licznik pełny, odniesienie = pomiar;
+    B) ważny pomiar poza tolerancją → „Remeasure” (źle dolana woda) albo „Accept anyway”
+       (błąd czujnika: licznik pełny, odniesienie = pomiar — kontrola dawek jest różnicowa,
+       stały offset jej nie psuje); podpowiedź „sensor suspect”, gdy odczyt fizycznie
+       niemożliwy (poza zbiornikiem);
+    C) brak ważnego / stabilnego pomiaru → „Remeasure” albo „Accept without sensor”: licznik
+       pełny, czujnik jawnie wyłączany w Settings.
+  - Uzupełnienie zdejmuje błąd „brak wody” (ERROR_LOW_RESERVOIR); Cycle Reset i przycisk
+    sprzętowy już nie napełniają licznika.
 - Wyjście z alarmu: reset z GUI (Cycle Reset) zdejmuje alarm i ustawia nowe odniesienie,
   licznik bez zmian.
 - Przy problemach użytkownik zwiększa tolerancję albo wyłącza czujnik.
@@ -197,6 +214,9 @@ Ustalone:
 - Wykrywanie dolania wody do rezerwy (REFILLING) i spadku bez pompy (wyciek).
 - Filtr (Kalman) pomiaru dawek, tryb cień.
 - Wyświetlacz OLED (`docs/DISPLAY_OLED_091.md`) — tylko dane obecne w GUI.
+  Razem z nim potwierdzanie „Rezerwa uzupełniona” bez GUI: od 3a krótkie naciśnięcie
+  przycisku sprzętowego (GPIO 4) tylko kasuje błąd, licznika nie napełnia — dziś bez GUI
+  nie da się potwierdzić uzupełnienia.
 - Usunięcie testu `LVLTEST` (`level_test.*`), gdy procedury z sekcji 4–5 go zastąpią.
 
 ## 14. Kolejność wdrożenia
@@ -209,9 +229,9 @@ Ustalone:
    zakres rezerwy na żółto, źródło, wiek pomiaru, „settling”) —
    dane z `getReserveView()` (`reserve_controller`), pola `res_*` w `/api/status`.
    Następny krok (sekcja 7a, implementacja od 2026-10-16):
-   a) licznik porcji z wymiarów w obu trybach (usunięcie `Reserve Volume ml` / licznika ml),
-      widok kropek z licznika, stop + alarm przy 0 kropek, przycisk „Rezerwa uzupełniona”,
-      nowa etykieta checkboxa;
+   a) ✅ licznik porcji z wymiarów w obu trybach (usunięcie `Reserve Volume ml` / licznika ml),
+      widok kropek z licznika, stop + alarm przy 0 kropek, przycisk „Rezerwa uzupełniona”
+      z pomiarem (sekcja 7a, ustalenia 2026-10-16), nowa etykieta checkboxa;
    b) kontrola dawek w blokach N porcji + tolerancja (Settings), alarm + stop, reset;
    c) log kontroli w FRAM (ring buffer) + pobieranie CSV z Settings.
    Potem display i dopracowanie GUI; narzędzia analizy dopiero, gdy kontrola nie sypie

@@ -87,17 +87,17 @@ All of the above (`ema_alpha`, `ema_clamp`, `alarm_p1`, `alarm_p2`, `zone_green`
 
 ## Reserve (Source Water) Tracking
 
-`src/hardware/reserve_controller.*` tracks remaining source water in ml, independent of the ATO algorithm's own state:
-- Configured capacity (`reserve_config_ml`, 1–10000 ml) and current remaining ml are persisted in FRAM.
-- Decremented by `dose_ml` after each auto cycle, and by the computed volume after a manual/direct pump session.
-- Reserve at or below 20% of configured volume (`RESERVE_WARN_PCT`) → `BUZZER_WARNING`, yellow dashboard badge ("Low reservoir — X ml remaining").
-- The reservoir float sensor was removed; this is a pure software counter until the VL53L4CD level sensor is integrated (see `docs/RESERVE_LEVEL_SENSOR_VL53L4CD.md`).
-- Reserve reaching 0 ml → `BUZZER_ALARM`, red badge, blocks both auto and manual pump until refilled and reset.
+`src/hardware/reserve_controller.*` keeps the reserve as a portion counter, with or without the level sensor (see `docs/RESERVE_LEVEL_SENSOR_VL53L4CD.md`):
+- Capacity comes from the reservoir geometry (`/api/reserve-config`), rounded down to whole portions of `dose_ml`. The bottom 5% (rounded up to portions) is a hidden safety bottom; the user sees the portions above it.
+- Every auto cycle subtracts `dose_ml`; a manual/direct pump session subtracts its computed volume. Remaining ml and the sensor reference are persisted in FRAM (`ReserveState`).
+- The bottom 30% of the usable portions is the reserve range: yellow in the dashboard only, no buzzer.
+- 0 portions → `BUZZER_ALARM`, red badge, blocks auto and manual pumping until the reservoir is refilled.
+- The reservoir is always refilled up to the marker and confirmed with "Reserve refilled" (`POST /api/reserve/refill`). With the level sensor off, the counter is set to full straight away. With it on, the level is measured until it is stable (8 series spread ≤ 3 mm, no trend, up to 5 min; the ATO pump waits meanwhile) and compared with the marker (± `marker_tol_mm`). The user then confirms (OK), accepts anyway or remeasures (outside the tolerance), or accepts without the sensor (no valid reading → counter full, level sensor switched off). The accepted reading becomes the reference for the dose check. Refilling clears a reserve-empty error. Cycle Reset no longer refills the counter.
 
 ## Safety
 
 - **Daily volume limit** (`daily_limit_ml`, default 2000 ml) — rolling 24h window; exceeding it → `STATE_ERROR`
-- **Reserve empty** (0 ml remaining) — blocks all pumping (auto and manual) until refilled and reset
+- **Reserve empty** (0 portions left) — blocks all pumping (auto and manual) until "Reserve refilled"
 - **Midnight auto-restart** — firmware restarts at 00:00 local time daily (guarded: only after 30 min uptime, and only if RTC has a valid time); ATO pump stopped safely first
 - **Service Mode at boot** — 15-minute grace period before auto-operation begins
 - **OTA safety** — pump stopped and system disabled in `ArduinoOTA.onStart()`, before the flash erase that would otherwise block the CPU for several seconds with the pump left in whatever state it was in
@@ -175,8 +175,9 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | GET | `/api/fill-water-max` | Get `dose_ml` and `daily_limit_ml` |
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
 | POST | `/api/set-dose` | Set single dose volume |
-| GET/POST | `/api/alg-config` | Get/set EMA + alarm-score parameters and `reserve_config_ml` |
+| GET/POST | `/api/alg-config` | Get/set EMA + alarm-score parameters |
 | GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`), `marker_tol_mm`, `portion_pause_s`, `use_level_sensor`; returns derived `ml_per_mm`, `capacity_ml`, `portions` |
+| POST | `/api/reserve/refill` | `action=start` (sensor off: counter full; on: start the level measurement), `confirm`, `no_sensor`, `remeasure`, `cancel`; progress/result in `/api/status` (`refill_*`) |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |
 
@@ -329,10 +330,11 @@ Defined in `src/hardware/fram_controller.h` (unified layout, shared with the cre
 0x0018–0x0417   Encrypted credentials (WiFi, admin password hash, device ID)
 0x0500+         ESP32 water system data:
   0x0518–0x051F   Daily volume tracking (uint16_t + last-reset UTC + checksum)
-  0x0520–0x0529   Reserve volume: configured max + current ml + checksum
+  0x0520–0x0529   (unused — former reserve volume ml counter)
   0x0560–0x0589   TopOffConfig (40 bytes + 2B checksum, magic 0xA8)
   0x0590–0x05A1   EmaBlock (16 bytes + 2B checksum)
   0x05A2–0x05C3   ReservoirConfig (32 bytes + 2B checksum, magic 0xB3)
+  0x05C4–0x05D5   ReserveState: remaining ml + sensor reference (16 bytes + 2B checksum, magic 0xC5)
   0x0600–0x0603   Top-off ring buffer count + write pointer
   0x0610–0x0AC0   Top-off ring buffer (60 × TopOffRecord, 20 bytes each)
 ```

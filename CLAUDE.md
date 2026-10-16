@@ -56,7 +56,7 @@ hardware/           Hardware abstraction layer
   hardware_pins.h      GPIO pin definitions
   level_sensor.*       VL53L4CD ToF reservoir level — non-blocking sample series (diagnostics stage)
   pump_controller.*    ATO pump relay control (auto + direct/manual)
-  reserve_controller.* Source-water reserve tracking (ml), FRAM-persisted
+  reserve_controller.* Source-water reserve: portion counter + refill measurement, FRAM-persisted
   rtc_controller.*     DS3231 RTC with NTP sync
   water_sensors.*      Float sensor debouncing (ATO)
 
@@ -108,10 +108,11 @@ Key parameters in `algorithm_config.h`:
 Defined in `hardware/fram_controller.h`:
 - `0x0000-0x0017`: Magic number and version
 - `0x0018-0x0417`: Encrypted credentials (WiFi, admin password, device ID)
-- `0x0500+`: Water system data (daily volume, reserve volume — see `README`)
+- `0x0500+`: Water system data (daily volume — see `README`)
 - `0x0560-0x0589`: TopOffConfig (40B + 2B checksum), magic=0xA8
 - `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
 - `0x05A2-0x05C3`: ReservoirConfig (32B + 2B checksum), magic=0xB3
+- `0x05C4-0x05D5`: ReserveState — portion counter + sensor reference (16B + 2B checksum), magic=0xC5
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 
 ### Hardware Pin Configuration (Seeed Xiao ESP32-C3)
@@ -128,7 +129,7 @@ Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
 
 > Note: output levels are defined as `PUMP_RELAY_ON/OFF` and `BUZZER_LEVEL_ON/OFF` in
 > `hardware_pins.h`. The reservoir float sensor was removed (new PCB, also from
-> code); reserve is a software ml counter in `reserve_controller.cpp` until the VL53L4CD is integrated.
+> code); reserve is a portion counter in `reserve_controller.cpp`, the VL53L4CD verifies refills (and doses, planned).
 > GPIO 9 is the BOOT strap pin (LOW during boot → download mode) — must stay unconnected.
 
 ### Key API Endpoints (Production Mode)
@@ -158,8 +159,9 @@ History/volumes:
 - `GET  /api/fill-water-max` — daily_limit_ml and dose_ml
 - `POST /api/set-fill-water-max` — set daily_limit_ml
 - `POST /api/set-dose` — set dose_ml
-- `GET|POST /api/alg-config` — EMA/alarm-score parameters + `reserve_config_ml`
+- `GET|POST /api/alg-config` — EMA/alarm-score parameters
 - `GET|POST /api/reserve-config` — reservoir geometry, marker tolerance, portion pause, level sensor on/off
+- `POST /api/reserve/refill` — "Reserve refilled": counter full (sensor off) or level measurement + user decision (sensor on)
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 
 Full parameter-level reference: see `README`.

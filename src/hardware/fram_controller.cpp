@@ -5,6 +5,7 @@
 #include <Adafruit_FRAM_I2C.h>
 #include "../algorithm/algorithm_config.h"
 #include "../config/reservoir_config.h"
+#include "reserve_controller.h"
 #include "rtc_controller.h"
 
 #include "../crypto/fram_encryption.h"
@@ -1041,51 +1042,31 @@ bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg) {
 }
 
 // ===============================
-// RESERVE VOLUME
+// RESERVE STATE
 // ===============================
 
-bool saveReserveToFRAM(uint32_t configMl, uint32_t currentMl) {
+bool saveReserveStateToFRAM(const ReserveState& st) {
     if (!framInitialized) return false;
 
-    fram.write(FRAM_ADDR_AVAIL_VOL_MAX,     (uint8_t*)&configMl,  4);
-    fram.write(FRAM_ADDR_AVAIL_VOL_CURRENT, (uint8_t*)&currentMl, 4);
-
-    uint8_t buf[8];
-    memcpy(buf,     &configMl,  4);
-    memcpy(buf + 4, &currentMl, 4);
-    uint16_t chksum = calculateChecksum(buf, 8);
-    fram.write(FRAM_ADDR_AVAIL_VOL_CHKSUM, (uint8_t*)&chksum, 2);
-
-    LOG_INFO("Reserve saved: config=%lu ml, current=%lu ml", configMl, currentMl);
+    fram.write(FRAM_ADDR_RESERVE_STATE, (uint8_t*)&st, sizeof(ReserveState));
+    uint16_t chksum = calculateChecksum((uint8_t*)&st, sizeof(ReserveState));
+    fram.write(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&chksum, 2);
     return true;
 }
 
-bool loadReserveFromFRAM(uint32_t& configMl, uint32_t& currentMl) {
+bool loadReserveStateFromFRAM(ReserveState& st) {
     if (!framInitialized) return false;
 
-    uint32_t cfg = 0, cur = 0;
-    fram.read(FRAM_ADDR_AVAIL_VOL_MAX,     (uint8_t*)&cfg, 4);
-    fram.read(FRAM_ADDR_AVAIL_VOL_CURRENT, (uint8_t*)&cur, 4);
-
-    uint8_t buf[8];
-    memcpy(buf,     &cfg, 4);
-    memcpy(buf + 4, &cur, 4);
-    uint16_t calc = calculateChecksum(buf, 8);
+    ReserveState tmp;
+    fram.read(FRAM_ADDR_RESERVE_STATE, (uint8_t*)&tmp, sizeof(ReserveState));
     uint16_t stored = 0;
-    fram.read(FRAM_ADDR_AVAIL_VOL_CHKSUM, (uint8_t*)&stored, 2);
+    fram.read(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&stored, 2);
 
-    if (calc != stored) {
-        LOG_WARNING("Reserve checksum mismatch — defaults will be used");
+    if (tmp.magic != RESERVE_STATE_MAGIC ||
+        calculateChecksum((uint8_t*)&tmp, sizeof(ReserveState)) != stored) {
         return false;
     }
-    if (cfg == 0 || cfg > 10000 || cur > cfg) {
-        LOG_WARNING("Reserve values out of range (cfg=%lu cur=%lu) — defaults", cfg, cur);
-        return false;
-    }
-
-    configMl  = cfg;
-    currentMl = cur;
-    LOG_INFO("Reserve loaded: config=%lu ml, current=%lu ml", configMl, currentMl);
+    st = tmp;
     return true;
 }
 

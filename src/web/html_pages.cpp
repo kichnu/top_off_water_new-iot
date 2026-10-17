@@ -1469,6 +1469,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 parts.push('level sensor ' + (d.level_sensor || '?'));
             }
             if (d.level_settling) parts.push('settling after pump');
+            if (d.reserve_float && d.reserve_float !== 'ok') parts.push('float switch: ' + d.reserve_float);
             meta.textContent = parts.join(' \u00b7 ');
         }
 

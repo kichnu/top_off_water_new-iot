@@ -537,6 +537,7 @@ void WaterAlgorithm::checkResetButton() {
 // ============================================================
 
 void WaterAlgorithm::resetFromError() {
+    clearReserveLatch();   // float back up → reserve alarm cleared, else it stays
     lastError    = ERROR_NONE;
     currentState = STATE_IDLE;
     stateStartMs = millis();
@@ -550,6 +551,7 @@ bool WaterAlgorithm::resetSystem() {
 
     if (isPumpActive()) stopPump();
 
+    clearReserveLatch();
     lastError    = ERROR_NONE;
     currentState = STATE_IDLE;
     stateStartMs = millis();

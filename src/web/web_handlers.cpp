@@ -173,6 +173,7 @@ void handleStatus(AsyncWebServerRequest* request) {
     // ============================================
     json["reserve_low"]         = isReserveLow();
     json["reserve_empty"]       = isReserveEmpty();
+    json["reserve_float"]       = getReserveFloatString();
 
     // Reservoir level sensor (VL53L4CD) — diagnostics, not yet used by the algorithm
     {

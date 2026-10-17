@@ -18,21 +18,7 @@ static void resetStatus(uint16_t dose) {
     g_cal.doseMl = dose;
 }
 
-// Ml of an unfinished run — estimate from the portion pace so far (or ml/s)
-static uint16_t estimateRunMl(uint32_t runMs) {
-    float mlPerMs = 0;
-    if (g_cal.runs > 0) {
-        uint32_t sum = 0;
-        for (uint8_t i = 0; i < g_cal.runs; i++) sum += g_cal.runMs[i];
-        mlPerMs = (float)g_cal.doseMl * g_cal.runs / sum;
-    } else {
-        mlPerMs = currentPumpSettings.volumePerSecond / 1000.0f;
-    }
-    return (uint16_t)lroundf(runMs * mlPerMs);
-}
-
-static void abortCalibration(const char* note, uint32_t unfinishedRunMs) {
-    if (unfinishedRunMs) subtractReserveMl(estimateRunMl(unfinishedRunMs));
+static void abortCalibration(const char* note) {
     g_cal.phase = CAL_IDLE;
     g_cal.note  = note;
     LOG_WARNING("Calibration aborted — %s (portion and time unchanged)", note);
@@ -80,8 +66,10 @@ const char* startPumpCalibration(uint16_t doseMl) {
     if (doseMl < CAL_DOSE_MIN_ML || doseMl > CAL_DOSE_MAX_ML) return "Single Dose: 1–2000 ml";
     if (!isReservoirConfigSaved())           return "Save the reservoir dimensions first";
     if (isPumpActive())                      return "Pump running — wait until it stops";
-    if (isReserveRefillActive())             return "Refill measurement in progress";
-    if (getReserveUsableMl() < (uint32_t)doseMl * (CAL_RUNS + 1)) {
+    if (isReserveEmpty())                    return "Reservoir empty — refill first";
+    // Level sensor estimate (±2 cm) — checked only when there is a reading
+    const ReserveView rv = getReserveView(doseMl);
+    if (rv.reading && rv.ml < (uint32_t)doseMl * (CAL_RUNS + 1)) {
         return "Not enough water in the reservoir for 4 portions + 1 — refill first";
     }
 
@@ -97,13 +85,11 @@ const char* startPumpCalibration(uint16_t doseMl) {
 const char* pumpCalibrationAction(const String& action) {
     if (action == "cancel") {
         if (g_cal.phase == CAL_IDLE) return "No calibration in progress";
-        uint32_t unfinished = 0;
         if (g_cal.phase == CAL_RUNNING) {
             g_stopping = true;
             stopPump();
-            unfinished = getLastPumpRunMs();
         }
-        abortCalibration("cancelled by the user", unfinished);
+        abortCalibration("cancelled by the user");
         g_stopping = false;
         return nullptr;
     }
@@ -121,7 +107,6 @@ const char* pumpCalibrationAction(const String& action) {
         uint32_t ms = getLastPumpRunMs();
         g_cal.runMs[g_cal.runs++] = ms;
         g_lastEnd = millis();
-        subtractReserveMl(g_cal.doseMl);
         LOG_INFO("Calibration run %u/%u: %lu ms", g_cal.runs, CAL_RUNS, ms);
 
         if (g_cal.runs < CAL_RUNS) {
@@ -175,7 +160,7 @@ void updatePumpCalibration() {
             g_cal.pauseLeftS = secondsLeft(CAL_START_DELAY_MS);
             if (g_cal.pauseLeftS == 0) {
                 const char* err = isPumpActive() ? "pump already running" : startRun();
-                if (err) abortCalibration(err, 0);
+                if (err) abortCalibration(err);
             }
             break;
         }
@@ -185,8 +170,8 @@ void updatePumpCalibration() {
         case CAL_RUNNING:
             g_cal.runElapsedMs = millis() - g_runStart;
             if (!isPumpActive() && !g_stopping) {
-                uint32_t ms = getLastPumpRunMs();
-                abortCalibration(ms >= CAL_RUN_MAX_MS ? "run exceeded 300 s" : "pump stopped outside the calibration", ms);
+                abortCalibration(getLastPumpRunMs() >= CAL_RUN_MAX_MS ? "run exceeded 300 s"
+                                                                      : "pump stopped outside the calibration");
             }
             break;
         default:

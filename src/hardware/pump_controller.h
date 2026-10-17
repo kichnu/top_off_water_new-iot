@@ -21,7 +21,6 @@ void directPumpOff();
 bool isDirectPumpMode();
 
 // Returns the volume of the last direct pump session and resets the counter (0 = no new session)
-uint16_t getLastDirectPumpVolumeMl();
 
 // Exact run time (ms) of the last finished direct pump session (not reset on read)
 uint32_t getLastDirectPumpRunMs();

@@ -3,28 +3,24 @@
 
 #include <Arduino.h>
 
-// Reservoir geometry and level-sensor settings, persisted in FRAM.
+// Reservoir geometry, persisted in FRAM.
 // Rectangular cross-section with vertical walls; the marker on the tank is the
 // max water level (full reservoir).
 
 #define RESERVOIR_CONFIG_MAGIC        0xB3
-#define RESERVOIR_FLAG_USE_SENSOR     0x01   // level sensor verifies refills and doses; off = portion
-                                             // counting only (sensor still measures, no sensor alarms)
 
 // Fixed reserve thresholds, both rounded up to whole portions (see ReservoirLevels).
 // HIDDEN — % of the full capacity kept below "empty" for pump safety (intake
 //          height); never shown to the user, the usable range ends above it.
 // LOW    — % of the usable capacity shown as the permanent yellow reserve range.
-// Both modes (portion counter): low = information only, 0 portions = alarm + pump stop.
+// Both are information only (level sensor); the pump stop is the float switch.
 #define RESERVE_LOW_PCT_FIXED          30
-#define RESERVE_HIDDEN_PCT_FIXED        5
+#define RESERVE_HIDDEN_PCT_FIXED       10
 
 // Validation ranges
 #define RESERVOIR_DIM_MIN_MM           50
 #define RESERVOIR_DIM_MAX_MM         2000
 #define RESERVOIR_MARKER_MIN_MM        20
-#define RESERVOIR_TOL_MIN_MM            1
-#define RESERVOIR_TOL_MAX_MM           30
 #define PORTION_PAUSE_MIN_S            15
 #define PORTION_PAUSE_MAX_S           120
 
@@ -49,10 +45,10 @@ struct ReservoirConfig {
     uint16_t width_mm;
     uint16_t sensor_to_bottom_mm;   // sensor face → reservoir bottom
     uint16_t marker_level_mm;       // marker (max water level) above the bottom
-    uint8_t  marker_tol_mm;         // marker check tolerance (±)
+    uint8_t  marker_tol_mm;         // unused (refill check removed), kept for the FRAM layout
     uint8_t  portion_pause_s;       // pause between manual portions (planned; not in the GUI,
                                     // the calibration uses the fixed CAL_PAUSE_MS)
-    uint8_t  flags;                 // RESERVOIR_FLAG_*
+    uint8_t  flags;                 // unused (was: level sensor on/off), kept for the FRAM layout
     uint8_t  magic;                 // RESERVOIR_CONFIG_MAGIC = valid block
     PumpCalibration cal;            // not editable via setReservoirConfig
     uint8_t  _reserved[4];
@@ -86,6 +82,5 @@ struct ReservoirLevels {
     uint32_t lowMl;      // RESERVE_LOW_PCT_FIXED of usableMl, rounded up — yellow reserve
 };
 ReservoirLevels reservoirLevels(uint16_t doseMl);
-bool     useLevelSensor();
 
 #endif // RESERVOIR_CONFIG_H

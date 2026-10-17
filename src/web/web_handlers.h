@@ -50,7 +50,6 @@ void handleSystemReset(AsyncWebServerRequest *request);
 // Algorithm config (GET = current, POST = save all 7 params)
 void handleAlgConfig(AsyncWebServerRequest *request);
 void handleReserveConfig(AsyncWebServerRequest *request);
-void handleReserveRefill(AsyncWebServerRequest *request);   // "Reserve refilled" + measurement
 
 // Health check endpoint (no session required)
 void handleHealth(AsyncWebServerRequest *request);

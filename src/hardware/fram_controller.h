@@ -60,8 +60,7 @@ struct PumpCycle {
 #define FRAM_ADDR_LAST_RESET_UTC  (FRAM_ESP32_BASE + 0x1A)  // 4 bytes - uint32_t (było 12)
 #define FRAM_ADDR_DAILY_CHECKSUM  (FRAM_ESP32_BASE + 0x1E)  // 2 bytes - checksum
 \
-// 0x0520–0x0529: former reserve volume (configured ml + current ml + checksum) — unused,
-// replaced by ReserveState at FRAM_ADDR_RESERVE_STATE
+// 0x0520–0x0529: former reserve volume (configured ml + current ml + checksum) — unused
 
 // 🆕 NEW: Configurable daily limit (replaces hardcoded FILL_WATER_MAX)
 #define FRAM_ADDR_FILL_WATER_MAX     (FRAM_ESP32_BASE + 0x2A)  // 2 bytes - uint16_t (ml)
@@ -93,9 +92,7 @@ struct PumpCycle {
 #define FRAM_ADDR_RESERVOIR_CFG     0x05A2   // 32 bytes — ReservoirConfig struct (0x05A2–0x05C1)
 #define FRAM_ADDR_RESERVOIR_CHKSUM  0x05C2   // 2 bytes — checksum
 
-// Reserve portion counter + level-sensor reference (ReserveState) — 16 bytes
-#define FRAM_ADDR_RESERVE_STATE     0x05C4   // 16 bytes — ReserveState struct (0x05C4–0x05D3)
-#define FRAM_ADDR_RESERVE_CHKSUM    0x05D4   // 2 bytes — checksum (free after it: 0x05D6–0x05FF)
+// 0x05C4–0x05FF: free (0x05C4–0x05D5 was the reserve portion counter, removed)
 
 // Ring buffer rekordów dolewek (TopOffRecord, 20 bajtów każdy)
 #define TOPOFF_HISTORY_SIZE         60       // Maksymalnie 60 rekordów (60×20=1200 bajtów)
@@ -161,7 +158,6 @@ struct TopOffRecord;
 struct EmaBlock;
 struct TopOffConfig;
 struct ReservoirConfig;
-struct ReserveState;
 
 // Ring buffer rekordów dolewek
 bool saveTopOffRecord(const TopOffRecord& record);
@@ -174,10 +170,6 @@ bool isTopOffRingBufferValid();    // false gdy count > TOPOFF_HISTORY_SIZE (leg
 // EMA block
 bool saveEmaBlockToFRAM(const EmaBlock& ema);
 bool loadEmaBlockFromFRAM(EmaBlock& ema);
-
-// Reserve portion counter + level-sensor reference
-bool saveReserveStateToFRAM(const ReserveState& st);
-bool loadReserveStateFromFRAM(ReserveState& st);
 
 // Konfiguracja algorytmu
 bool saveTopOffConfigToFRAM(const TopOffConfig& cfg);

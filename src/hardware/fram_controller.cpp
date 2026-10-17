@@ -1041,32 +1041,3 @@ bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg) {
     return true;
 }
 
-// ===============================
-// RESERVE STATE
-// ===============================
-
-bool saveReserveStateToFRAM(const ReserveState& st) {
-    if (!framInitialized) return false;
-
-    fram.write(FRAM_ADDR_RESERVE_STATE, (uint8_t*)&st, sizeof(ReserveState));
-    uint16_t chksum = calculateChecksum((uint8_t*)&st, sizeof(ReserveState));
-    fram.write(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&chksum, 2);
-    return true;
-}
-
-bool loadReserveStateFromFRAM(ReserveState& st) {
-    if (!framInitialized) return false;
-
-    ReserveState tmp;
-    fram.read(FRAM_ADDR_RESERVE_STATE, (uint8_t*)&tmp, sizeof(ReserveState));
-    uint16_t stored = 0;
-    fram.read(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&stored, 2);
-
-    if (tmp.magic != RESERVE_STATE_MAGIC ||
-        calculateChecksum((uint8_t*)&tmp, sizeof(ReserveState)) != stored) {
-        return false;
-    }
-    st = tmp;
-    return true;
-}
-

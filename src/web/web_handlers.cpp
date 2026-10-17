@@ -16,7 +16,6 @@
 #include "../config/credentials_manager.h"
 #include "../algorithm/water_algorithm.h"
 #include "../hardware/reserve_controller.h"
-#include "../hardware/level_stable.h"
 #include "../hardware/pump_calibration.h"
 #include "../hardware/level_sensor.h"
 #include "../config/reservoir_config.h"
@@ -190,20 +189,22 @@ void handleStatus(AsyncWebServerRequest* request) {
         json["level_age_s"]       = ls.finished_ms ? (long)((millis() - ls.finished_ms) / 1000) : -1L;
     }
 
-    // Reserve (portion counter) for the monitor bargraph
+    // Reserve from the level sensor for the monitor level bar
     {
         uint16_t    dose = waterAlgorithm.getConfig().dose_ml;
         ReserveView rv   = getReserveView(dose);
-        json["res_configured"]  = isReservoirConfigSaved();
-        json["res_sensor"]      = rv.sensorCheck;
-        json["res_ml"]          = rv.ml;
-        json["res_portions"]    = rv.portions;
-        json["res_capacity_ml"] = rv.capacityMl;
-        json["res_pct"]         = rv.pct;
-        json["res_water_mm"]    = rv.waterMm;
-        json["res_zone"]        = (uint8_t)rv.zone;   // 0=ok 1=low 2=empty 3=unknown
-        json["res_low_ml"]      = rv.lowMl;   // permanent yellow reserve range
-        json["res_dose_ml"]     = dose;
+        json["res_configured"]    = isReservoirConfigSaved();
+        json["res_reading"]       = rv.reading;
+        json["res_ml"]            = rv.ml;
+        json["res_portions"]      = rv.portions;
+        json["res_capacity_ml"]   = rv.capacityMl;
+        json["res_capacity_portions"] = rv.capacityPortions;
+        json["res_pct"]           = rv.pct;
+        json["res_water_mm"]      = rv.waterMm;
+        json["res_marker_mm"]     = getReservoirConfig().marker_level_mm;
+        json["res_zone"]          = (uint8_t)rv.zone;   // 0=ok 1=low 2=empty 3=unknown
+        json["res_low_ml"]        = rv.lowMl;   // yellow reserve range
+        json["res_dose_ml"]       = dose;
         json["level_settling"]  = isLevelSettling();
 
         // Pump calibration
@@ -230,24 +231,6 @@ void handleStatus(AsyncWebServerRequest* request) {
                     json["cal_sd_ms"]   = cs.sdMs;
                 }
             }
-        }
-
-        // Refill measurement ("Reserve refilled")
-        const RefillStatus& rs = getRefillStatus();
-        json["refill_phase"] = (uint8_t)rs.phase;     // 0=idle 1=measuring 2=result
-        if (rs.phase != REFILL_IDLE) {
-            json["refill_result"]    = (uint8_t)rs.result;   // 1=ok 2=mismatch 3=no reading
-            json["refill_series"]    = rs.series;
-            json["refill_window"]    = STABLE_WINDOW;
-            json["refill_elapsed_s"] = rs.elapsedS;
-            json["refill_dist_mm"]   = rs.distanceMm;
-            json["refill_expect_mm"] = rs.expectedMm;
-            json["refill_dev_mm"]    = rs.deviationMm;
-            json["refill_dev_ml"]    = rs.deviationMl;
-            json["refill_spread_mm"] = rs.spreadMm;
-            json["refill_tol_mm"]    = getReservoirConfig().marker_tol_mm;
-            json["refill_suspect"]   = rs.sensorSuspect;
-            if (rs.note) json["refill_note"] = rs.note;
         }
     }
     json["rtc_ts"]            = (uint32_t)getUnixTimestamp();
@@ -296,9 +279,9 @@ void handleDirectPumpOn(AsyncWebServerRequest* request) {
             "{\"success\":false,\"error\":\"Reserve empty — refill the reservoir\"}");
         return;
     }
-    if (isReserveRefillActive() || isPumpCalibrationActive()) {
+    if (isPumpCalibrationActive()) {
         request->send(409, "application/json",
-            "{\"success\":false,\"error\":\"Refill measurement or calibration in progress\"}");
+            "{\"success\":false,\"error\":\"Calibration in progress\"}");
         return;
     }
 
@@ -804,8 +787,6 @@ static void sendReserveConfig(AsyncWebServerRequest* request) {
     doc["width_mm"]            = c.width_mm;
     doc["sensor_to_bottom_mm"] = c.sensor_to_bottom_mm;
     doc["marker_level_mm"]     = c.marker_level_mm;
-    doc["marker_tol_mm"]       = c.marker_tol_mm;
-    doc["use_level_sensor"]    = useLevelSensor();
     doc["ml_per_mm"]           = reservoirMlPerMm();
     doc["capacity_ml"]         = cap;
     doc["dose_ml"]             = dose;
@@ -836,18 +817,11 @@ void handleReserveConfig(AsyncWebServerRequest* request) {
         };
         // Clamp to the field width before validation so overflow can't wrap into range
         auto u16 = [](long v) -> uint16_t { return (uint16_t)constrain(v, 0L, 65535L); };
-        auto u8  = [](long v) -> uint8_t  { return (uint8_t)constrain(v, 0L, 255L); };
 
         c.length_mm           = u16(getI("length_mm",           c.length_mm));
         c.width_mm            = u16(getI("width_mm",            c.width_mm));
         c.sensor_to_bottom_mm = u16(getI("sensor_to_bottom_mm", c.sensor_to_bottom_mm));
         c.marker_level_mm     = u16(getI("marker_level_mm",     c.marker_level_mm));
-        c.marker_tol_mm       = u8(getI("marker_tol_mm",        c.marker_tol_mm));
-        if (request->hasParam("use_level_sensor", true)) {
-            bool on = getI("use_level_sensor", 1) != 0;
-            c.flags = on ? (c.flags | RESERVOIR_FLAG_USE_SENSOR)
-                         : (c.flags & ~RESERVOIR_FLAG_USE_SENSOR);
-        }
 
         const char* err = setReservoirConfig(c);
         if (err) {
@@ -861,37 +835,6 @@ void handleReserveConfig(AsyncWebServerRequest* request) {
     }
 
     sendReserveConfig(request);
-}
-
-// ===============================
-// RESERVE REFILL HANDLER
-// POST action=start     — sensor off: counter full; sensor on: start the measurement
-//      action=confirm   — accept the measured result (counter full, reference = reading)
-//      action=no_sensor — counter full, level sensor switched off
-//      action=remeasure / cancel
-// ===============================
-
-void handleReserveRefill(AsyncWebServerRequest* request) {
-    if (!checkAuthentication(request)) {
-        request->send(401, "text/plain", "Unauthorized");
-        return;
-    }
-
-    String action = request->hasParam("action", true)
-        ? request->getParam("action", true)->value() : String("start");
-
-    JsonDocument doc;
-    const char* err = nullptr;
-    if (action == "start") {
-        bool measuring = startReserveRefill(&err);
-        doc["measuring"] = measuring;
-    } else {
-        err = reserveRefillAction(action);
-    }
-    doc["success"] = (err == nullptr);
-    if (err) doc["error"] = err;
-    String resp; serializeJson(doc, resp);
-    request->send(err ? 409 : 200, "application/json", resp);
 }
 
 // ===============================

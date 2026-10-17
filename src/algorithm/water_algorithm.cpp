@@ -234,14 +234,6 @@ void WaterAlgorithm::startAutoPump() {
         return;
     }
 
-    if (isReserveRefillActive()) {
-        LOG_INFO("Auto pump deferred — reserve refill measurement in progress, returning to IDLE");
-        currentState = STATE_IDLE;
-        stateStartMs = millis();
-        resetSensorProcess();
-        return;
-    }
-
     if (isReserveEmpty()) {
         LOG_WARNING("Reserve empty — auto pump blocked → STATE_ERROR");
         startErrorSignal(ERROR_LOW_RESERVOIR);
@@ -337,8 +329,6 @@ void WaterAlgorithm::finishPumpCycle() {
     saveTopOffRecord(record);
     saveEmaToFRAM();
     framBusy = false;
-
-    subtractReserveMl(config.dose_ml);
 
     rolling24hVolumeMl = scanRolling24h();
 
@@ -537,7 +527,6 @@ void WaterAlgorithm::checkResetButton() {
     } else if (!pressed && wasPressed) {
         wasPressed = false;
         if (currentState == STATE_ERROR) {
-            // Reset only — the refill is confirmed with "Reserve refilled" (GUI)
             resetFromError();
         }
     }

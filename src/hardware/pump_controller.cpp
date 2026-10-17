@@ -199,12 +199,6 @@ void directPumpOff() {
     LOG_INFO("Direct pump stopped after %.1f s, ~%d ml", lastPumpRunMs / 1000.0f, lastDirectPumpVolumeMl);
 }
 
-uint16_t getLastDirectPumpVolumeMl() {
-    uint16_t v = lastDirectPumpVolumeMl;
-    lastDirectPumpVolumeMl = 0;
-    return v;
-}
-
 uint32_t getLastDirectPumpRunMs() {
     return lastDirectPumpRunMs;
 }

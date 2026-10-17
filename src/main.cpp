@@ -18,7 +18,6 @@
 #include "algorithm/water_algorithm.h"
 #include "hardware/buzzer_controller.h"
 #include "hardware/reserve_controller.h"
-#include "hardware/level_stable.h"
 #include "hardware/pump_calibration.h"
 #include "hardware/level_sensor.h"
 #include "hardware/level_test.h"
@@ -129,7 +128,6 @@ void setup() {
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
     initReservoirConfig();
-    initReserveController();   // needs the reservoir geometry and the dose
     // I2C bus reset after burst ring-buffer reads — ensures clean state for credentials and RTC.
     Wire.end();
     delay(10);
@@ -253,8 +251,8 @@ void loop() {
 
     // DAILY RESTART CHECK — o lokalnej północy (00:00)
     // Guard: minimalny uptime 30 min (zabezpieczenie przed pętlą restart jeśli start tuż przed północą)
-    // Postponed while a calibration or a refill measurement is in progress
-    if (g_restartAtTs > 0 && now > 1800000UL && !isPumpCalibrationActive() && !isReserveRefillActive()) {
+    // Postponed while a calibration is in progress
+    if (g_restartAtTs > 0 && now > 1800000UL && !isPumpCalibrationActive()) {
         uint32_t nowTs = (uint32_t)getUnixTimestamp();
         if (nowTs >= g_restartAtTs) {
             Serial.println("=== DAILY RESTART: midnight reached ===");
@@ -275,8 +273,6 @@ void loop() {
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();
     updateLevelSensor();
-    updateStableLevel();
-    updateReserveController();
     updatePumpCalibration();
     updateLevelTest();
     waterAlgorithm.update();
@@ -285,20 +281,8 @@ void loop() {
     if (now - lastUpdate >= 100) {
         updatePumpController();
 
-        // Subtract volume after a manual pump run has stopped
-        uint16_t directVol = getLastDirectPumpVolumeMl();
-        if (directVol > 0) {
-            subtractReserveMl(directVol);
-        }
-
-        // Reservoir refilled — the reserve-empty error has lost its cause
-        if (takeReserveRefilled() && waterAlgorithm.getState() == STATE_ERROR &&
-            waterAlgorithm.getLastError() == ERROR_LOW_RESERVOIR) {
-            waterAlgorithm.resetFromError();
-        }
-
         // Buzzer — every ATO error (state stays until reset from the GUI) and
-        // 0 portions sound the alarm; the reserve range is GUI-only
+        // an empty reservoir sound the alarm; the reserve range is GUI-only
         if (isReserveEmpty() || waterAlgorithm.getState() == STATE_ERROR) {
             setBuzzerMode(BUZZER_ALARM);
         } else {

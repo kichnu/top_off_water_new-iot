@@ -13,9 +13,7 @@ static void setDefaults(ReservoirConfig& c) {
     c.width_mm            = 202;
     c.sensor_to_bottom_mm = 470;
     c.marker_level_mm     = 380;
-    c.marker_tol_mm       = 5;
     c.portion_pause_s     = 30;
-    c.flags               = RESERVOIR_FLAG_USE_SENSOR;
     c.magic               = RESERVOIR_CONFIG_MAGIC;
 }
 
@@ -31,9 +29,6 @@ static const char* validate(const ReservoirConfig& c) {
     if (c.marker_level_mm < RESERVOIR_MARKER_MIN_MM ||
         c.marker_level_mm > c.sensor_to_bottom_mm - LEVEL_MIN_CLEARANCE_MM) {
         return "marker level: 20 mm … (sensor to bottom − 50 mm) — sensor needs 50 mm clearance";
-    }
-    if (c.marker_tol_mm < RESERVOIR_TOL_MIN_MM || c.marker_tol_mm > RESERVOIR_TOL_MAX_MM) {
-        return "marker tolerance: 1–30 mm";
     }
     if (c.portion_pause_s < PORTION_PAUSE_MIN_S || c.portion_pause_s > PORTION_PAUSE_MAX_S) {
         return "pause between portions: 15–120 s";
@@ -68,9 +63,8 @@ const char* setReservoirConfig(const ReservoirConfig& cfg) {
 
     g_cfg   = c;
     g_saved = true;
-    LOG_INFO("Reservoir config saved: %ux%u mm, sensor→bottom %u mm, marker %u mm ±%u, pause %u s, level sensor %s",
-             c.length_mm, c.width_mm, c.sensor_to_bottom_mm, c.marker_level_mm, c.marker_tol_mm,
-             c.portion_pause_s, (c.flags & RESERVOIR_FLAG_USE_SENSOR) ? "on" : "off (portion counting)");
+    LOG_INFO("Reservoir config saved: %ux%u mm, sensor→bottom %u mm, marker %u mm",
+             c.length_mm, c.width_mm, c.sensor_to_bottom_mm, c.marker_level_mm);
     return nullptr;
 }
 
@@ -117,8 +111,4 @@ ReservoirLevels reservoirLevels(uint16_t doseMl) {
     l.usableMl = l.fullMl - l.hiddenMl;
     l.lowMl    = pctUpToPortions(l.usableMl, RESERVE_LOW_PCT_FIXED, dose);
     return l;
-}
-
-bool useLevelSensor() {
-    return g_cfg.flags & RESERVOIR_FLAG_USE_SENSOR;
 }

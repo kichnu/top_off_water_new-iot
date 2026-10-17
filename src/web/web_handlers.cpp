@@ -213,7 +213,7 @@ void handleStatus(AsyncWebServerRequest* request) {
             json["cal_calibrated"] = isPumpCalibrated();
             json["cal_portion_ms"] = getPortionMs();
             json["cal_ts"]         = pc.ts;
-            json["cal_phase"]      = (uint8_t)cs.phase;   // 0=idle 1=before 2=ready 3=running 4=after 5=result
+            json["cal_phase"]      = (uint8_t)cs.phase;   // 0=idle 1=countdown 2=ready 3=running 4=result
             if (cs.note) json["cal_note"] = cs.note;
             if (cs.phase != CAL_IDLE) {
                 json["cal_dose_ml"]    = cs.doseMl;
@@ -221,22 +221,13 @@ void handleStatus(AsyncWebServerRequest* request) {
                 json["cal_runs_total"] = CAL_RUNS;
                 json["cal_pause_left"] = cs.pauseLeftS;
                 json["cal_run_ms"]     = cs.runElapsedMs;
-                json["cal_sensor"]     = cs.sensor;
                 JsonArray arr = json["cal_times"].to<JsonArray>();
                 for (uint8_t i = 0; i < cs.runs; i++) arr.add(cs.runMs[i]);
-                if (cs.phase == CAL_BEFORE || cs.phase == CAL_AFTER) {
-                    const StableLevel& sl = getStableLevel();
-                    json["cal_lvl_wait"]   = sl.state == STABLE_WAIT;
-                    json["cal_lvl_series"] = sl.series;
-                    json["cal_lvl_window"] = STABLE_WINDOW;
-                    json["cal_lvl_s"]      = sl.elapsedS;
-                }
                 if (cs.phase == CAL_RESULT) {
-                    json["cal_median_ms"] = cs.medianMs;
-                    json["cal_min_ms"]    = cs.minMs;
-                    json["cal_max_ms"]    = cs.maxMs;
-                    json["cal_sd_ms"]     = cs.sdMs;
-                    if (cs.hasSensorMl) json["cal_sensor_ml"] = cs.sensorMl;
+                    json["cal_mean_ms"] = cs.meanMs;
+                    json["cal_min_ms"]  = cs.minMs;
+                    json["cal_max_ms"]  = cs.maxMs;
+                    json["cal_sd_ms"]   = cs.sdMs;
                 }
             }
         }
@@ -814,7 +805,6 @@ static void sendReserveConfig(AsyncWebServerRequest* request) {
     doc["sensor_to_bottom_mm"] = c.sensor_to_bottom_mm;
     doc["marker_level_mm"]     = c.marker_level_mm;
     doc["marker_tol_mm"]       = c.marker_tol_mm;
-    doc["portion_pause_s"]     = c.portion_pause_s;
     doc["use_level_sensor"]    = useLevelSensor();
     doc["ml_per_mm"]           = reservoirMlPerMm();
     doc["capacity_ml"]         = cap;
@@ -853,7 +843,6 @@ void handleReserveConfig(AsyncWebServerRequest* request) {
         c.sensor_to_bottom_mm = u16(getI("sensor_to_bottom_mm", c.sensor_to_bottom_mm));
         c.marker_level_mm     = u16(getI("marker_level_mm",     c.marker_level_mm));
         c.marker_tol_mm       = u8(getI("marker_tol_mm",        c.marker_tol_mm));
-        c.portion_pause_s     = u8(getI("portion_pause_s",      c.portion_pause_s));
         if (request->hasParam("use_level_sensor", true)) {
             bool on = getI("use_level_sensor", 1) != 0;
             c.flags = on ? (c.flags | RESERVOIR_FLAG_USE_SENSOR)

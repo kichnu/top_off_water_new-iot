@@ -1,8 +1,6 @@
 #include "pump_calibration.h"
 #include <math.h>
 #include "pump_controller.h"
-#include "level_sensor.h"
-#include "level_stable.h"
 #include "reserve_controller.h"
 #include "rtc_controller.h"
 #include "../config/config.h"
@@ -12,14 +10,12 @@
 
 static CalStatus     g_cal       = {};
 static uint32_t      g_runStart  = 0;
-static uint32_t      g_lastEnd   = 0;      // millis() when the last run stopped
+static uint32_t      g_lastEnd   = 0;      // millis() when the last run stopped / countdown began
 static volatile bool g_stopping  = false;  // web "stop" in progress — not an external stop
 
 static void resetStatus(uint16_t dose) {
     memset(&g_cal, 0, sizeof(g_cal));
-    g_cal.doseMl   = dose;
-    g_cal.beforeMm = NAN;
-    g_cal.afterMm  = NAN;
+    g_cal.doseMl = dose;
 }
 
 // Ml of an unfinished run — estimate from the portion pace so far (or ml/s)
@@ -37,35 +33,35 @@ static uint16_t estimateRunMl(uint32_t runMs) {
 
 static void abortCalibration(const char* note, uint32_t unfinishedRunMs) {
     if (unfinishedRunMs) subtractReserveMl(estimateRunMl(unfinishedRunMs));
-    stableLevelCancel();
     g_cal.phase = CAL_IDLE;
     g_cal.note  = note;
     LOG_WARNING("Calibration aborted — %s (portion and time unchanged)", note);
 }
 
-static void computeResult() {
-    uint32_t t[CAL_RUNS];
-    memcpy(t, g_cal.runMs, sizeof(t));
-    for (uint8_t i = 1; i < CAL_RUNS; i++) {          // insertion sort, N = 10
-        uint32_t v = t[i];
-        int8_t j = i - 1;
-        while (j >= 0 && t[j] > v) { t[j + 1] = t[j]; j--; }
-        t[j + 1] = v;
-    }
-    g_cal.minMs    = t[0];
-    g_cal.maxMs    = t[CAL_RUNS - 1];
-    g_cal.medianMs = (CAL_RUNS % 2) ? t[CAL_RUNS / 2]
-                                    : (t[CAL_RUNS / 2 - 1] + t[CAL_RUNS / 2]) / 2;
-    double mean = 0, var = 0;
-    for (uint8_t i = 0; i < CAL_RUNS; i++) mean += t[i];
-    mean /= CAL_RUNS;
-    for (uint8_t i = 0; i < CAL_RUNS; i++) var += (t[i] - mean) * (t[i] - mean);
-    g_cal.sdMs = (float)sqrt(var / (CAL_RUNS - 1));
+static const char* startRun() {
+    if (!triggerPumpMs(CAL_RUN_MAX_MS, "CALIBRATION")) return "Pump start failed";
+    g_runStart  = millis();
+    g_cal.phase = CAL_RUNNING;
+    return nullptr;
+}
 
-    g_cal.hasSensorMl = !isnan(g_cal.beforeMm) && !isnan(g_cal.afterMm);
-    if (g_cal.hasSensorMl) {
-        g_cal.sensorMl = (int32_t)lroundf((g_cal.afterMm - g_cal.beforeMm) * reservoirMlPerMm());
+static void computeResult() {
+    uint32_t mn = g_cal.runMs[0], mx = g_cal.runMs[0];
+    double mean = 0, var = 0;
+    for (uint8_t i = 0; i < CAL_RUNS; i++) {
+        uint32_t t = g_cal.runMs[i];
+        if (t < mn) mn = t;
+        if (t > mx) mx = t;
+        mean += t;
     }
+    mean /= CAL_RUNS;
+    for (uint8_t i = 0; i < CAL_RUNS; i++) var += (g_cal.runMs[i] - mean) * (g_cal.runMs[i] - mean);
+    g_cal.minMs  = mn;
+    g_cal.maxMs  = mx;
+    g_cal.meanMs = (uint32_t)lround(mean);
+    g_cal.sdMs   = (float)sqrt(var / (CAL_RUNS - 1));
+    g_cal.note   = ((mx - mn) * 100.0 > CAL_SPREAD_WARN_PCT * mean)
+                 ? "runs differ by more than 20% of the mean — consider repeating" : nullptr;
 
     g_cal.phase = CAL_RESULT;
 
@@ -73,16 +69,9 @@ static void computeResult() {
     LOG_INFO("====================================");
     LOG_INFO("PUMP CALIBRATION RESULT — portion %u ml", g_cal.doseMl);
     for (uint8_t i = 0; i < CAL_RUNS; i++) LOG_INFO("  run %2u : %lu ms", i + 1, g_cal.runMs[i]);
-    LOG_INFO("  median : %lu ms (min %lu, max %lu, sd %.0f ms)",
-             g_cal.medianMs, g_cal.minMs, g_cal.maxMs, g_cal.sdMs);
-    if (g_cal.hasSensorMl) {
-        uint32_t expected = (uint32_t)g_cal.doseMl * CAL_RUNS;
-        LOG_INFO("  sensor : %.1f → %.1f mm, %ld ml vs %lu ml (%.0f%%)",
-                 g_cal.beforeMm, g_cal.afterMm, (long)g_cal.sensorMl, expected,
-                 g_cal.sensorMl * 100.0f / expected);
-    } else {
-        LOG_INFO("  sensor : no data");
-    }
+    LOG_INFO("  mean   : %lu ms (min %lu, max %lu, sd %.0f ms)",
+             g_cal.meanMs, g_cal.minMs, g_cal.maxMs, g_cal.sdMs);
+    if (g_cal.note) LOG_WARNING("  %s", g_cal.note);
     LOG_INFO("====================================");
 }
 
@@ -93,22 +82,15 @@ const char* startPumpCalibration(uint16_t doseMl) {
     if (isPumpActive())                      return "Pump running — wait until it stops";
     if (isReserveRefillActive())             return "Refill measurement in progress";
     if (getReserveUsableMl() < (uint32_t)doseMl * (CAL_RUNS + 1)) {
-        return "Not enough water in the reservoir for 10 portions + 1 — refill first";
+        return "Not enough water in the reservoir for 4 portions + 1 — refill first";
     }
 
     setSystemState(false);   // Service Mode without the boot auto-enable timer
     resetStatus(doseMl);
-
-    g_cal.sensor = useLevelSensor() && getLevelSensorState() == LEVEL_SENSOR_OK;
-    if (g_cal.sensor) {
-        stableLevelStart(true);
-        g_cal.phase = CAL_BEFORE;
-    } else {
-        g_cal.phase = CAL_READY;
-    }
-    g_lastEnd = 0;
-    LOG_INFO("Calibration started — portion %u ml, level sensor %s",
-             doseMl, g_cal.sensor ? "measuring before" : "not used");
+    g_cal.phase = CAL_COUNTDOWN;
+    g_lastEnd   = millis();
+    LOG_INFO("Calibration started — portion %u ml, run 1 in %lu s",
+             doseMl, CAL_START_DELAY_MS / 1000);
     return nullptr;
 }
 
@@ -129,10 +111,7 @@ const char* pumpCalibrationAction(const String& action) {
     if (action == "run") {
         if (g_cal.phase != CAL_READY) return "Not ready for a run";
         if (g_cal.pauseLeftS > 0)     return "Pause between portions — wait";
-        if (!triggerPumpMs(CAL_RUN_MAX_MS, "CALIBRATION")) return "Pump start failed";
-        g_runStart  = millis();
-        g_cal.phase = CAL_RUNNING;
-        return nullptr;
+        return startRun();
     }
 
     if (action == "stop") {
@@ -147,9 +126,6 @@ const char* pumpCalibrationAction(const String& action) {
 
         if (g_cal.runs < CAL_RUNS) {
             g_cal.phase = CAL_READY;
-        } else if (g_cal.sensor) {
-            stableLevelStart(true);                   // quiet time first
-            g_cal.phase = CAL_AFTER;
         } else {
             computeResult();
         }
@@ -165,52 +141,47 @@ const char* pumpCalibrationAction(const String& action) {
         waterAlgorithm.setConfig(cfg);
 
         PumpCalibration pc = {};
-        pc.portion_ms = g_cal.medianMs;
+        pc.portion_ms = g_cal.meanMs;
         pc.ts         = getUnixTimestamp();
         pc.dose_ml    = g_cal.doseMl;
         pc.spread_ms  = (uint16_t)min<uint32_t>(g_cal.maxMs - g_cal.minMs, 65535u);
-        pc.sensor_ml  = g_cal.hasSensorMl ? (int16_t)constrain(g_cal.sensorMl, -32767L, 32767L)
-                                          : CAL_SENSOR_NONE;
+        pc.sensor_ml  = CAL_SENSOR_NONE;
         pc.runs       = CAL_RUNS;
         if (!setPumpCalibration(pc)) return "FRAM write failed";
 
         // ml/s at the working point — only for estimating direct pump runs
-        currentPumpSettings.volumePerSecond = g_cal.doseMl * 1000.0f / g_cal.medianMs;
+        currentPumpSettings.volumePerSecond = g_cal.doseMl * 1000.0f / g_cal.meanMs;
         saveVolumeToNVS();
-
-        if (!isnan(g_cal.afterMm)) setReserveReference(g_cal.afterMm);
 
         g_cal.phase = CAL_IDLE;
         g_cal.note  = "calibration saved";
         LOG_INFO("Calibration saved: %u ml = %lu ms (%.2f ml/s)",
-                 g_cal.doseMl, g_cal.medianMs, currentPumpSettings.volumePerSecond);
+                 g_cal.doseMl, g_cal.meanMs, currentPumpSettings.volumePerSecond);
         return nullptr;
     }
 
     return "Unknown action";
 }
 
+// Seconds left of a wait that started at g_lastEnd
+static uint32_t secondsLeft(uint32_t waitMs) {
+    uint32_t since = millis() - g_lastEnd;
+    return since >= waitMs ? 0 : (waitMs - since + 999) / 1000;
+}
+
 void updatePumpCalibration() {
     switch (g_cal.phase) {
-        case CAL_BEFORE: {
-            const StableLevel& sl = getStableLevel();
-            if (sl.state == STABLE_DONE) {
-                g_cal.beforeMm = sl.distanceMm;
-                g_cal.phase    = CAL_READY;
-            } else if (sl.state == STABLE_FAILED) {
-                g_cal.sensor = false;
-                g_cal.note   = "level before not measured — continuing without sensor data";
-                g_cal.phase  = CAL_READY;
-                LOG_WARNING("Calibration: %s (%s)", g_cal.note, sl.note);
+        case CAL_COUNTDOWN: {
+            g_cal.pauseLeftS = secondsLeft(CAL_START_DELAY_MS);
+            if (g_cal.pauseLeftS == 0) {
+                const char* err = isPumpActive() ? "pump already running" : startRun();
+                if (err) abortCalibration(err, 0);
             }
             break;
         }
-        case CAL_READY: {
-            uint32_t pauseMs = getReservoirConfig().portion_pause_s * 1000UL;
-            uint32_t since   = millis() - g_lastEnd;
-            g_cal.pauseLeftS = (g_lastEnd == 0 || since >= pauseMs) ? 0 : (pauseMs - since + 999) / 1000;
+        case CAL_READY:
+            g_cal.pauseLeftS = secondsLeft(CAL_PAUSE_MS);
             break;
-        }
         case CAL_RUNNING:
             g_cal.runElapsedMs = millis() - g_runStart;
             if (!isPumpActive() && !g_stopping) {
@@ -218,18 +189,6 @@ void updatePumpCalibration() {
                 abortCalibration(ms >= CAL_RUN_MAX_MS ? "run exceeded 300 s" : "pump stopped outside the calibration", ms);
             }
             break;
-        case CAL_AFTER: {
-            const StableLevel& sl = getStableLevel();
-            if (sl.state == STABLE_DONE) {
-                g_cal.afterMm = sl.distanceMm;
-                computeResult();
-            } else if (sl.state == STABLE_FAILED) {
-                g_cal.note = "level after not measured — result without sensor data";
-                LOG_WARNING("Calibration: %s (%s)", g_cal.note, sl.note);
-                computeResult();
-            }
-            break;
-        }
         default:
             break;
     }

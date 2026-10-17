@@ -1044,9 +1044,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         <label style="font-size:0.72rem;color:var(--text-muted);">Marker tolerance &plusmn;mm (1–30)
                             <input type="number" id="resTol" min="1" max="30" step="1"
                                 style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Pause between portions s (15–120)
-                            <input type="number" id="resPause" min="15" max="120" step="1"
-                                style="width:100%;margin-top:3px;"></label>
                         <label style="font-size:0.72rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
                             <input type="checkbox" id="resUseSensor"> Level sensor: verify doses and refills (off: portion counting only)</label>
                     </div>
@@ -1379,23 +1376,23 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
             if (phase === 0) {
                 txt.innerHTML = 'Step 1 \u2014 portion. Prepare a measuring vessel with a mark at the portion. ' +
+                    'Run 1 starts by itself 5 s after Start calibration. ' +
                     'After each run empty the vessel \u2014 <b>not back into the reservoir</b>. ' +
-                    'The reservoir needs ' + (d.cal_runs_total || 10) + ' portions + 1.';
+                    'The reservoir needs 4 portions + 1.';
                 key = 'setup';
                 html = '<label style="font-size:0.72rem;color:var(--text-muted);">Single Dose ml (1\u20132000) ' +
                        '<input type="number" id="calDoseInput" min="1" max="2000" step="1" value="' + dose + '" style="width:110px;"></label>' +
                        calBtn('Start calibration', 'calStart()', 'btn-primary') +
                        calBtn('Close', 'calSetupOpen=false;updateStatus()');
-            } else if (phase === 1 || phase === 4) {
-                txt.textContent = (phase === 1 ? 'Level before the runs' : 'Level after the runs') + ': ' +
-                    (d.cal_lvl_wait ? 'waiting for the water to settle after the pump\u2026'
-                                    : 'measuring, stable series ' + d.cal_lvl_series + '/' + d.cal_lvl_window + ' \u00b7 ' + d.cal_lvl_s + ' s');
-                key = 'lvl';
+            } else if (phase === 1) {
+                txt.innerHTML = '<span class="cal-big">Run 1 / ' + d.cal_runs_total + '</span> \u2014 portion ' + d.cal_dose_ml + ' ml. ' +
+                    'Empty vessel in place \u2014 the pump starts in ' + d.cal_pause_left + ' s. Stop exactly at the mark.';
+                key = 'countdown';
                 html = calBtn('Cancel', "calAction('cancel')");
             } else if (phase === 2) {
                 const n = d.cal_runs + 1;
                 txt.innerHTML = '<span class="cal-big">Run ' + n + ' / ' + d.cal_runs_total + '</span> \u2014 portion ' + d.cal_dose_ml + ' ml. ' +
-                    (d.cal_pause_left > 0 ? 'Empty the vessel; next run in ' + d.cal_pause_left + ' s.'
+                    (d.cal_pause_left > 0 ? 'Hose draining back, empty the vessel; next run in ' + d.cal_pause_left + ' s.'
                                           : 'Empty vessel in place? Start, then Stop exactly at the mark.');
                 key = 'ready' + (d.cal_pause_left > 0 ? 'p' : '');
                 html = calBtn('Start run', "calAction('run')", 'btn-primary', 'calRunBtn') + calBtn('Cancel', "calAction('cancel')");
@@ -1411,20 +1408,13 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     ' \u2014 <span id="calRunClock">' + fmtS(d.cal_run_ms || 0) + '</span></span><br>Pumping \u2014 press Stop when the water reaches the mark.';
                 key = 'run';
                 html = calBtn('STOP', "calAction('stop')", 'btn-primary', 'calStopBtn') + calBtn('Cancel', "calAction('cancel')");
-            } else if (phase === 5) {
-                const exp = d.cal_dose_ml * d.cal_runs_total;
-                let r = 'Result: portion ' + d.cal_dose_ml + ' ml = <b>' + fmtS(d.cal_median_ms) + '</b> (median), ' +
+            } else if (phase === 4) {
+                let r = 'Result: portion ' + d.cal_dose_ml + ' ml = <b>' + fmtS(d.cal_mean_ms) + '</b> (mean), ' +
                         'min ' + fmtS(d.cal_min_ms) + ', max ' + fmtS(d.cal_max_ms) + ', sd ' + (d.cal_sd_ms / 1000).toFixed(2) + ' s.';
-                if (d.cal_sensor_ml !== undefined) {
-                    r += '<br>Level sensor: ' + d.cal_sensor_ml + ' ml vs ' + exp + ' ml pumped (' +
-                         Math.round(d.cal_sensor_ml * 100 / exp) + '%) \u2014 information only.';
-                } else {
-                    r += '<br>No level-sensor data.';
-                }
-                if (d.cal_note) r += '<br>' + d.cal_note + '.';
+                if (d.cal_note) r += '<br><span style="color:var(--accent-yellow);">' + d.cal_note.charAt(0).toUpperCase() + d.cal_note.slice(1) + '.</span>';
                 txt.innerHTML = r;
                 key = 'result';
-                html = calBtn('Confirm', "calAction('confirm')", 'btn-primary') + calBtn('Cancel', "calAction('cancel')");
+                html = calBtn('Save', "calAction('confirm')", 'btn-primary') + calBtn('Reject', "calAction('cancel')");
             }
             if (key !== calKey) { calKey = key; act.innerHTML = html; }
             const rb = document.getElementById('calRunBtn');
@@ -2061,7 +2051,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             document.getElementById('resSensorBottom').value = d.sensor_to_bottom_mm;
             document.getElementById('resMarker').value       = d.marker_level_mm;
             document.getElementById('resTol').value          = d.marker_tol_mm;
-            document.getElementById('resPause').value        = d.portion_pause_s;
             document.getElementById('resUseSensor').checked  = !!d.use_level_sensor;
             document.getElementById('resDerived').textContent =
                 (d.saved ? '' : 'Defaults (not saved yet) \u2014 ') +
@@ -2086,14 +2075,13 @@ const char* DASHBOARD_HTML = R"rawliteral(
             errEl.style.display = 'none';
             var v = function(id) { return parseInt(document.getElementById(id).value, 10); };
             var len = v('resLength'), wid = v('resWidth'), bottom = v('resSensorBottom');
-            var marker = v('resMarker'), tol = v('resTol'), pause = v('resPause');
+            var marker = v('resMarker'), tol = v('resTol');
 
             var err = '';
             if (isNaN(len) || len < 50 || len > 2000 || isNaN(wid) || wid < 50 || wid > 2000) err = 'Length/width: 50\u20132000 mm';
             else if (isNaN(bottom) || bottom < 70 || bottom > 1200)   err = 'Sensor \u2192 bottom: 70\u20131200 mm';
             else if (isNaN(marker) || marker < 20 || marker > bottom - 50) err = 'Marker level: 20 mm \u2026 (sensor \u2192 bottom \u2212 50 mm)';
             else if (isNaN(tol) || tol < 1 || tol > 30)              err = 'Marker tolerance: 1\u201330 mm';
-            else if (isNaN(pause) || pause < 15 || pause > 120)      err = 'Pause between portions: 15\u2013120 s';
             if (err) { errEl.textContent = err; errEl.style.display = ''; return; }
 
             var btn = document.getElementById('resSaveBtn');
@@ -2102,7 +2090,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: 'length_mm=' + len + '&width_mm=' + wid + '&sensor_to_bottom_mm=' + bottom +
-                      '&marker_level_mm=' + marker + '&marker_tol_mm=' + tol + '&portion_pause_s=' + pause +
+                      '&marker_level_mm=' + marker + '&marker_tol_mm=' + tol +
                       '&use_level_sensor=' + (document.getElementById('resUseSensor').checked ? 1 : 0)
             })
             .then(function(r) { return r ? r.json() : Promise.reject('no response'); })

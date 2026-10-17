@@ -28,7 +28,7 @@
 #define PORTION_PAUSE_MIN_S            15
 #define PORTION_PAUSE_MAX_S           120
 
-// Pump calibration in the working point: portion time for dose_ml (median of
+// Pump calibration in the working point: portion time for dose_ml (mean of
 // CAL_RUNS runs stopped by the user at the vessel mark). Saved only by the
 // calibration procedure, which is also the only way to change Single Dose ml.
 #define CAL_SENSOR_NONE   INT16_MIN
@@ -38,7 +38,7 @@ struct PumpCalibration {
     uint32_t ts;              // unix time of the calibration
     uint16_t dose_ml;         // portion the time belongs to
     uint16_t spread_ms;       // max − min of the runs
-    int16_t  sensor_ml;       // level-sensor drop over all runs, CAL_SENSOR_NONE = no data
+    int16_t  sensor_ml;       // no longer measured — always CAL_SENSOR_NONE
     uint8_t  runs;
     uint8_t  _pad;
 };
@@ -50,7 +50,8 @@ struct ReservoirConfig {
     uint16_t sensor_to_bottom_mm;   // sensor face → reservoir bottom
     uint16_t marker_level_mm;       // marker (max water level) above the bottom
     uint8_t  marker_tol_mm;         // marker check tolerance (±)
-    uint8_t  portion_pause_s;       // pause between portions (calibration, manual top-off)
+    uint8_t  portion_pause_s;       // pause between manual portions (planned; not in the GUI,
+                                    // the calibration uses the fixed CAL_PAUSE_MS)
     uint8_t  flags;                 // RESERVOIR_FLAG_*
     uint8_t  magic;                 // RESERVOIR_CONFIG_MAGIC = valid block
     PumpCalibration cal;            // not editable via setReservoirConfig

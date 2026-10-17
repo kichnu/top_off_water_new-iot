@@ -1,253 +1,132 @@
 # Plan wdrożenia: VL53L4CD jako monitor poziomu wody w rezerwie
 
-Wersja 4 (2026-10-15) — rezerwa = licznik porcji, czujnik kontroluje dawki (sekcja 7a).
-Wersja 3 (2026-10-14) — po testach na prawdziwym zbiorniku i ustaleniu procedur
-kalibracji. Wersje 1–2 (pływak jako checkpoint, Kalman jako krok główny) — w historii gita.
+Wersja 5 (2026-10-17) — czujnik tylko informacyjnie (szacunek ±2 cm), stop pompy przy pustym
+zbiorniku = pływak (GPIO 20), kalibracja pompy 4 przebiegi / średnia, licznik porcji i procedura
+„Rezerwa uzupełniona” z pomiarem usunięte.
+Wersja 4 (2026-10-15) — licznik porcji + kontrola dawek czujnikiem; wersje 1–3 — w historii gita.
 Testy fizyczne czujnika: `~/Dokumenty/My_apps/TOOLS/distance_sensor_pololu/WNIOSKI.md`.
+
+## ⚠ Przypomnienia (do zrobienia)
+
+- **Pływak rezerwy wyłączony w firmware**: `RESERVE_FLOAT_ENABLED = 0` w
+  `src/hardware/reserve_controller.h`. Po zamontowaniu pływaka na GPIO 20 (do GND, LOW = brak
+  wody) ustawić na 1, zbudować, sprawdzić log startu („Reserve float switch on GPIO 20: HIGH”)
+  i przetestować: opuszczenie pływaka → po 3 s alarm + blokada porcji; podniesienie → alarm
+  trwa do Cycle Reset. Do tego czasu NIC nie zatrzymuje pompy przy pustym zbiorniku.
+- **Test `LVLTEST` (`level_test.*`) zostaje** — narzędzie diagnostyczne czujnika; usunąć dopiero,
+  gdy przestanie być potrzebny.
 
 ## 1. Cel
 
-Rezerwa wody w zbiorniku zasilającym pompę ATO liczona w porcjach (licznik), a czujnik
-odległości do lustra wody kontroluje, czy spadek poziomu odpowiada wlanym porcjom
-(sekcja 7a). Dolewka zawsze w stałych porcjach o skalibrowanym czasie pompy (sekcje 5–6);
-czujnik weryfikuje też sprawność przy znaczniku (sekcja 4).
+Informacja o ilości wody w zbiorniku zasilającym pompę ATO: czujnik odległości do lustra wody →
+wysokość wody → objętość (pole dna × wysokość) → szacunkowa liczba porcji jako podpowiedź dla
+użytkownika. Bez alarmów z czujnika. Zatrzymanie pompy przy pustym zbiorniku — pływak.
 
-## 2. Sprzęt i zbiornik (stan z testów 2026-10-14)
+## 2. Sprzęt i zbiornik
 
 - VL53L4CD (Pololu #3692, `pololu/VL53L4CD`) na wspólnym I2C (SDA GPIO 5, SCL GPIO 6,
-  100 kHz), adres 0x29, XSHUT/INT niepodłączone. Pływak rezerwy usunięty (`9bb6758`).
-- Otwór w obudowie: cylindryczny Ø10 mm, krawędź zewnętrzna 5,5 mm od czujnika.
-  Ø7 mm dawał 100% odrzuconych próbek — ścianka w stożkach Tx 29° / Rx 25°
-  (datasheet rys. 21; Rx = mniejszy otwór Ø0,20, Tx = większy Ø0,40 przy pinie 1).
+  100 kHz), adres 0x29, XSHUT/INT niepodłączone. Bez osłony przed czujnikiem.
+- Otwór w obudowie: cylindryczny Ø10 mm, krawędź zewnętrzna 5,5 mm od czujnika
+  (Ø7 mm dawał 100% odrzuconych próbek).
 - Zbiornik testowy: 282 × 202 mm, ścianki pionowe (56,96 ml/mm), czujnik 470 mm nad dnem,
-  maksymalny poziom (znacznik) 380 mm od dna → odległość przy pełnym 90 mm.
-- **Przegroda z małym otworem** — poziom po stronie czujnika wyrównuje się powoli:
-  po pracy pompy 2 min ciszy pomiarowej (`LEVEL_PUMP_QUIET_MS`, wdrożone).
-- Szum: seria 10 próbek sd ~2–3 mm, SEM ~0,7–1 mm; kolejne serie przy stojącej wodzie
-  ±1 mm. Pojedyncza seria → ±60 ml; do decyzji uśredniać kilka serii.
+  znacznik (maksymalny poziom) 380 mm od dna. Przegroda z małym otworem — 2 min ciszy
+  pomiarowej po pompie (`LEVEL_PUMP_QUIET_MS`).
+- Pływak rezerwy: GPIO 20 (UART0 RX — przy starcie wejście, nie strap), INPUT_PULLUP, LOW =
+  brak wody. Nie GPIO 21: ROM wysyła tam log startowy (TX w stanie HIGH), zamknięty pływak do
+  GND zwierałby wyjście.
 
-Wnioski z testów (`LVLTEST`, przebiegi 29–60 s): stosunek czujnik/kalibracja 0,75–0,94,
-dopasowanie `ml ≈ 10,2·t + 182` — przesunięcie to ekstrapolacja poza zakres krótkich
-przebiegów. Dlatego kalibracja **w punkcie pracy** (porcja = dawka), nie model ml/s
-(sekcja 5) — start pompy i cofka z węża są wtedy w czasie porcji.
+## 3. Dokładność czujnika — wnioski z testów (2026-10-17)
 
-## 3. Ustawienia zbiornika (Settings) — KROK 1
+- W obrębie serii i między seriami tuż po sobie: rozrzut < 1–3 mm. Między pomiarami w dłuższym
+  odstępie: skokowe przesunięcia 5–30 mm przy nieruszanej wodzie.
+- Lustro wody: odbicie lustrzane (sygnał ~7–10 Mcps) + odbicia pośrednie (czujnik → woda →
+  otoczenie → woda → czujnik); zmiana sceny / oświetlenia przestawia proporcje — skok odczytu
+  razem ze zmianą `ambient` i `signal`. Bez wody odczyt zaniżony.
+- Styropian jako pływak-cel: odczyt zawyżony (~+30 mm wobec gołej wody, choć wierzch jest
+  ~20 mm wyżej) — podczerwień wnika w piankę (rozpraszanie podpowierzchniowe).
+- Kształt zbiornika: stożek 18° przy niskim poziomie zahacza o ścianki.
+- Wniosek: czujnik ±2 cm — wystarczy jako informacja o rezerwie, nie do kontroli dawek ani
+  stopu pompy. Kontrola dawek (dawna sekcja 7a, kroki 3b–c) usunięta z planu.
 
-Parametry w FRAM (nowy blok, sekcja 9), edycja w Settings:
-- długość, szerokość [mm] (przekrój prostokątny, ścianki pionowe);
-- odległość czujnik → dno [mm];
-- poziom znacznika = maksymalny poziom od dna [mm];
-- tolerancja sprawdzenia przy znaczniku [±1–30 mm, domyślnie 5];
-- przerwa między porcjami [15–120 s, domyślnie 30];
-- przełącznik „czujnik poziomu” (kontrola dawek, sekcja 7a);
-- kontrola dawek: liczba porcji w bloku N (1–10, domyślnie 3) i tolerancja spadku
-  [±1–30 mm, domyślnie 5] — osobna od tolerancji przy znaczniku;
-- wyliczane (tylko odczyt): ml/mm, pojemność do znacznika, liczba porcji, ukryte dno,
-  zakres rezerwy (progi w porcjach — sekcja 12);
-- przycisk pobrania logu kontroli dawek (CSV, sekcja 7a).
+## 4. Ustawienia zbiornika (Settings)
 
-Walidacja (parametry czujnika): odległość czujnik → dno ≤ 1200 mm (zasięg VL53L4CD),
-prześwit czujnik → lustro przy znaczniku ≥ 50 mm; ostrzeżenie (bez blokady), gdy
-plama pola widzenia 18° na dnie jest szersza niż krótszy bok zbiornika.
+FRAM `ReservoirConfig` (0x05A2): długość, szerokość, odległość czujnik → dno, poziom znacznika
+(od dna — wysokość do liczenia pojemności). Wyliczane: ml/mm, pojemność, porcje użytkowe,
+zakres rezerwy, ukryte dno. Walidacja z parametrami czujnika (zasięg 1200 mm, prześwit ≥ 50 mm,
+ostrzeżenie o stożku szerszym niż zbiornik).
 
-## 4. Sprawdzenie przy znaczniku
+Usunięte z GUI/API (pola w FRAM zostają dla układu): tolerancja przy znaczniku, przerwa między
+porcjami (`portion_pause_s` — wróci przy dolewce ręcznej porcjami), przełącznik „czujnik
+poziomu” (bajt `flags`).
 
-1. Użytkownik dolewa wodę do znacznika i klika „Woda na znaczniku”.
-2. System czeka na ustabilizowanie (przegroda) i robi długi pomiar: kilkanaście serii,
-   do ~2 min; pokazuje postęp.
-3. Wynik: zmierzona odległość vs oczekiwana (czujnik → dno − znacznik), odchyłka w mm i ml,
-   rozrzut serii; ocena względem tolerancji z Settings.
-4. Użytkownik zatwierdza → rezerwa = pełna (reset), zapis daty sprawdzenia
-   (i ewentualnie offsetu — do ustalenia).
+## 5. Kalibracja pompy porcjami (wdrożone 2026-10-17, v5)
 
-## 5. Kalibracja pompy porcjami (GUI: sekcja Pump Calibration, prowadzenie krok po kroku)
+Porcja = `Single Dose ml`, zmieniana tylko w kalibracji (pierwszy krok). Wejście = Service Mode
+bez automatycznego powrotu do Auto.
 
-Wielkość porcji = `Single Dose ml` (jedna wartość dla algorytmu ATO, dolewki ręcznej
-i kalibracji).
-
-1. Warunki: wymiary wprowadzone, czujnik sprawny, system w Service Mode, zapas wody
-   na N porcji + margines.
-2. Pomiar poziomu „przed” (kilka serii).
-3. N przebiegów (domyślnie 10): Start → pompa → użytkownik zatrzymuje, gdy naczynie
-   osiągnie porcję. Czas mierzy firmware (ms). Przerwa między przebiegami — sekcja 12.
-4. Pomiar poziomu „po” (2 min ciszy + kilka serii) → całkowity ubytek wg czujnika
-   (przy 10 × 250 ml ~44 mm — bardzo dokładnie).
-5. Wynik: mediana i rozrzut czasów, czas porcji, porównanie N × porcja vs czujnik.
-   Zatwierdź → zapis czasu porcji (ms) do FRAM.
-
-Ustalenia 2026-10-17 (wdrożone):
-- `Single Dose ml` zmienia się tylko w kalibracji — jej pierwszy krok po wejściu w procedurę
-  (pole usunięte z Algorithm Parameters, `/api/set-dose` usunięte). Wejście = Service Mode bez
-  automatycznego powrotu do Auto (przełącznik zablokowany do końca procedury).
-- Stara kalibracja (`calibration-on/off`, wpisywanie `volume_per_second`) usunięta;
-  `volume_per_second` = porcja / czas porcji, tylko do szacowania `direct-on`.
-- Czujnik wyłączony/niesprawny → kalibracja bez porównania (źródłem prawdy naczynie).
-  Czujnik włączony → pomiar przed/po zbierany do przyszłych analiz (log TCP + `sensor_ml`
-  w FRAM); rozbieżność tylko pokazywana.
-- Bez kalibracji dla bieżącej porcji algorytm liczy z ml/s (ostrzeżenie „NOT calibrated”).
-- Koniec porcji odcina jednorazowy `esp_timer` (dokładność ms, niezależnie od pętli 100 ms).
+1. Start kalibracji → po 5 s pompa rusza sama (przebieg 1); użytkownik zatrzymuje na znaczniku
+   naczynia, firmware mierzy czas w ms.
+2. 20 s przerwy (cofnięcie wody w wężyku, opróżnienie naczynia — nie do zbiornika), potem
+   przycisk „Start run” dla przebiegów 2, 3, 4.
+3. Od razu po 4. przebiegu wynik: średnia, min/max, sd; podpowiedź „powtórz”, gdy max − min
+   > 20% średniej. Save → czas porcji = średnia (FRAM), `volume_per_second` = porcja / czas;
+   Reject → bez zmian.
+- Bez pomiaru poziomu w trakcie kalibracji (`sensor_ml` w FRAM zawsze „brak”).
+- Średnia z 4 (4 × porcja): błąd zatrzymania rozkłada się na większą objętość — nie jest to
+  pomiar super dokładny, ale lepszy niż pojedynczy. Nie uwzględnia zmiany wydajności pompy
+  przy pełnym vs prawie pustym zbiorniku (słup wody).
+- Warunek startu: pływak nie zgłasza braku wody; jeśli czujnik ma odczyt — szacunek ≥ 4 + 1 porcji.
 - Przebieg > 300 s albo zatrzymanie pompy spoza kalibracji → przerwanie procedury.
+- Bez kalibracji dla bieżącej porcji algorytm liczy z ml/s (ostrzeżenie „NOT calibrated”).
 
-## 6. Dolewka ręczna porcjami (System Control)
+## 6. Dolewka ręczna porcjami (planowane, bez zmian)
 
-Zamiast przełącznika ON/OFF:
-- **ON** (monostabilny): każde kliknięcie dodaje jedną porcję do kolejki; pierwsze
-  uruchamia pompę. Etykieta: porcja bieżąca / łącznie w kolejce.
-- **OFF**: dokończ bieżącą porcję i wyzeruj kolejkę.
-- Porcja = skalibrowany czas pompy; między porcjami przerwa (sekcja 12).
-- Rezerwa: odjęcie porcji po każdej porcji.
+ON (monostabilny) dodaje porcję do kolejki, OFF dokańcza bieżącą i zeruje kolejkę; przerwa
+między porcjami z `portion_pause_s` (pole wróci do Settings). Kolejka max 20, przerywana przez
+pływak (brak wody).
 
-## 7. Monitor poziomu (ATO Process Monitor)
+## 7. Monitor poziomu (ATO Process Monitor) — wdrożone v5
 
-Kropki = porcje z licznika (nie z odczytu czujnika — bez częściowych kropek): kontener
-o stałej szerokości, kropki o stałym rozmiarze napełniają go od dołu jak woda; zakres
-rezerwy na stałe żółty; 0 kropek = brak wody. Obok: ml, %, stan czujnika (ok / fault /
-wyłączony), wiek pomiaru, „uspokajanie po pompie”, wynik ostatniej kontroli dawek.
+- Prosty pasek postępu: 0% = ukryte dno, 100% = znacznik; kreska = górna granica zakresu
+  rezerwy; kolor: niebieski / żółty (rezerwa) / czerwony (nic powyżej ukrytego dna).
+- Objętość = długość × szerokość × (czujnik → dno − odczyt); użytkowe ml = objętość − ukryte
+  dno (10% pojemności do znacznika, w pełnych porcjach); zakres rezerwy = 30% użytkowej.
+- Tekst: „≈ N / M portions”, ml, %, wysokość wody / znacznik, wiek pomiaru, „settling after
+  pump”, stan pływaka (gdy nie „ok”). Brak ważnego odczytu → „no reading”.
+- Aktualizacja jak dotąd: serie co 10 s, cisza 2 min po pompie. Bez alarmów i buzzera —
+  w zakresie rezerwy żółty znaczek w statusie.
 
-## 7a. Kontrola dawek czujnikiem (ustalenia 2026-10-15)
+## 8. Pływak rezerwy — stop pompy (wdrożone v5, tymczasowo wyłączone)
 
-Rezerwa w obu trybach = licznik porcji od pojemności z wymiarów (pole `Reserve Volume ml`
-i licznik ml do usunięcia). Każda porcja odejmuje jedną kropkę.
+- GPIO 20, debounce 3 s. LOW → brak wody: `BUZZER_ALARM`, czerwony znaczek, nowa porcja (auto
+  i ręczna) nie startuje; rozpoczęta się kończy.
+- Zatrzask: po podniesieniu pływaka alarm trwa do Cycle Reset (GUI) albo przycisku sprzętowego;
+  reset przy wciąż opuszczonym pływaku nie kasuje alarmu.
+- `/api/status`: `reserve_empty`, `reserve_float` (ok / low / latched / disabled).
 
-Czujnik włączony (checkbox zaznaczony) — dodatkowo kontrola w blokach rozłącznych:
-1. Pomiar odniesienia: średnia z 3 serii (SEM ~0,5 mm), poza ciszą po pompie.
-2. N porcji (Settings, 1–10, domyślnie 3 — kilka porcji, żeby spadek był lepiej mierzalny;
-   3 × 150 ml ≈ 7,9 mm).
-3. Po 2 min ciszy pomiar „po” (3 serie); porównanie spadku z N × porcja / ml/mm.
-4. W tolerancji (Settings, ±1–30 mm, domyślnie 5) → OK, pomiar „po” = nowe odniesienie.
-   Poza tolerancją albo brak ważnego pomiaru (awaria czujnika) → alarm (jeden, wspólny)
-   + stop systemu jak przy braku wody, czeka na interwencję użytkownika.
-- Liczą się porcje ATO i ręczne. Kalibracja pompy i ręczna pompa ciągła (`direct-on`)
-  unieważniają bieżący blok: licznik odejmuje ml z czasu pracy, nowe odniesienie.
-- Dolanie wody do rezerwy: osobny przycisk „Rezerwa uzupełniona” (`Reserve refilled`) →
-  licznik pełny + nowe odniesienie. Bez kliknięcia czujnik zobaczy wzrost → poza tolerancją
-  → alarm (celowo). Ustalenia 2026-10-16 (wdrożone w 3a):
-  - Woda dolewana zawsze do znacznika — przycisk zawsze znaczy „pełny” (bez dolewek
-    częściowych i bez ustawiania licznika z pomiaru).
-  - Czujnik OFF → licznik pełny od razu.
-  - Czujnik ON → pomiar do stabilizacji (to samo co sekcja 4 — jeden przycisk): serie co
-    5 s, okno 8 ważnych serii, rozrzut ≤ 3 mm i brak trendu (średnia 2. połowy − 1. ≤ 1 mm),
-    limit 5 min; pompa ATO czeka, ręczna/kalibracja zablokowane, start pompy przerywa pomiar.
-    Wynik vs znacznik (tolerancja przy znaczniku):
-    A) w tolerancji → „Confirm”: licznik pełny, odniesienie = pomiar;
-    B) ważny pomiar poza tolerancją → „Remeasure” (źle dolana woda) albo „Accept anyway”
-       (błąd czujnika: licznik pełny, odniesienie = pomiar — kontrola dawek jest różnicowa,
-       stały offset jej nie psuje); podpowiedź „sensor suspect”, gdy odczyt fizycznie
-       niemożliwy (poza zbiornikiem);
-    C) brak ważnego / stabilnego pomiaru → „Remeasure” albo „Accept without sensor”: licznik
-       pełny, czujnik jawnie wyłączany w Settings.
-  - Uzupełnienie zdejmuje błąd „brak wody” (ERROR_LOW_RESERVOIR); Cycle Reset i przycisk
-    sprzętowy już nie napełniają licznika.
-- Wyjście z alarmu: reset z GUI (Cycle Reset) zdejmuje alarm i ustawia nowe odniesienie,
-  licznik bez zmian.
-- Przy problemach użytkownik zwiększa tolerancję albo wyłącza czujnik.
-- Log: każde sprawdzenie (także OK — do doboru tolerancji) w ring buffer w FRAM, rekord
-  16 B: czas, liczba porcji, spadek oczekiwany i zmierzony (mm × 10), rozrzut (SEM),
-  wynik (OK / poza tolerancją / brak pomiaru), stan licznika. 500 rekordów (8 KB od
-  0x0AC0) — kilka miesięcy. Pobieranie jako CSV przyciskiem w Settings.
-- Później (gdy czujnik przy rozsądnej tolerancji nie sypie alarmami): narzędzia analizy
-  logu, potem dynamiczna korekta czasu pompy (zmiana wydajności, np. słup wody) — tylko
-  przy pewności, że czujnik mierzy prawidłowo.
+## 9. Buzzer
 
-Czujnik wyłączony — samo liczenie porcji, bez kontroli; żółty zakres rezerwy to tylko
-informacja (GUI, display); stop + alarm przy 0 kropek (ukryte dno 5%).
+Jeden wzorzec `BUZZER_ALARM` — 2 piknięcia 50 ms co 120 s: pływak (brak wody) i każdy błąd
+ATO. Zakres rezerwy z czujnika — bez buzzera.
 
-## 8. Buzzer
+## 10. FRAM
 
-Jeden rodzaj alarmu — sygnał „sprawdź GUI” (później też display). Szczegóły w sekcji 12.
-Sygnały provisioning i startowe bez zmian.
+`ReservoirConfig` 0x05A2–0x05C3 (z `PumpCalibration`). Licznik porcji (`ReserveState`,
+0x05C4–0x05D5) usunięty — wolne 0x05C4–0x05FF oraz 0x0AC0–0x7FFF.
 
-## 9. FRAM
+## 11. API
 
-MB85RC256V = 32 KB; zajęte do 0x0AC0 (~2,7 KB), wolne 0x0AC0–0x7FFF (~29 KB) oraz
-0x05C4–0x05FF. Blok `ReservoirConfig` (magic 0xB3 + checksum) w 0x05A2: wymiary,
-tolerancje, przerwa, flagi; w `_reserved`: N porcji i tolerancja kontroli dawek, czas
-porcji (ms) + porcja, dla której skalibrowano, data sprawdzenia przy znaczniku.
-Licznik porcji (stan rezerwy) — trwały w FRAM. Log kontroli dawek: 0x0AC0, 500 × 16 B
-(sekcja 7a); reszta na późniejszy log zdarzeń.
+- `GET|POST /api/reserve-config` — wymiary i znacznik; wyliczane ml/mm, pojemność, progi.
+- `POST /api/pump/calibration` — `start&dose_ml`, `run`, `stop`, `confirm`, `cancel`.
+- `GET /api/status` — `res_*` (szacunek z czujnika), `reserve_low`, `reserve_empty`,
+  `reserve_float`, `cal_*`.
+- Usunięte: `POST /api/reserve/refill`.
 
-## 10. API / GUI
+## 12. Później (świadomie odłożone)
 
-Form-encoded POST (konwencja projektu):
-- `GET|POST /api/reserve-config` — wymiary, tolerancje, N porcji kontroli, progi;
-- `POST /api/reserve/refilled` — rezerwa uzupełniona (licznik pełny, nowe odniesienie);
-- `GET /api/reserve/check-log.csv` — log kontroli dawek;
-- `POST /api/reserve/marker-check` (start), `GET` (postęp/wynik), `POST .../accept`;
-- `POST /api/pump/calibration/...` — start / run-start / run-stop / finish / accept / abort;
-- `POST /api/pump/portion-add`, `POST /api/pump/portion-stop`;
-- `GET /api/status` — dodatkowo poziom w ml/%, strefa, kolejka porcji, stan procedur.
-
-## 11. Harmonogram pomiaru
-
-- Nieblokujący: jedna próbka na iterację `loop()`, seria N=10, budżet 50 ms.
-- Cyklicznie co 10 s (bring-up; docelowo do ustalenia), brak pomiarów w trakcie pompy
-  i 2 min po niej; serie na żądanie (procedury) omijają ciszę.
-
-## 12. Ustalenia (2026-10-14) i otwarte punkty
-
-Ustalone:
-- Przerwa między porcjami (kalibracja i dolewka ręczna): domyślnie 30 s, ustawiana w GUI
-  15–120 s. Algorytm ATO ma naturalnie długie przerwy.
-- Czas pompy z dokładnością 0,1 s (dziś pełne sekundy w `triggerPump` / `calculateDoseTime`).
-- `Single Dose ml` = porcja wszędzie; panel ustawień przerabiany wg potrzeb.
-- OFF dokańcza porcję — bez osobnego stopu awaryjnego (porcja < 250 ml nie przeleje
-  akwarium, wężyk można zatkać).
-- Rezerwa = licznik porcji (sekcja 7a; bez pływaka). Progi na sztywno, w pełnych porcjach
-  (`reservoirLevels()`): pojemność z wymiarów zaokrąglona w dół do pełnych porcji;
-  5% z niej, zaokrąglone w górę do porcji = ukryte dno bezpieczeństwa (wysokość zasysu
-  pompy) — dla użytkownika niewidoczne, jego 0 kropek = brak wody; z pozostałej (użytkowej)
-  pojemności 30%, zaokrąglone w górę do porcji = zakres rezerwy (tylko informacja, żółty).
-  Progi liczone przy każdym odczycie, nie zapisywane — idą za zmianą `Single Dose ml`.
-- 0 kropek = brak wody (w obu trybach): alarm, nowa porcja nie startuje; rozpoczęta porcja
-  zawsze się kończy (pompa ciągnie do ~2%).
-- Kalibracja: GUI ostrzega, żeby nie wlewać wody z naczynia z powrotem do zbiornika do
-  końca procedury. Zawsze 10 porcji, bez wpisywania zebranej objętości.
-- Wlot pompy / otwór w przegrodzie: bez parametru (5% pokrywa wlot; otwór zostanie powiększony).
-- Walidacja wymiarów w Settings uwzględnia parametry czujnika (zasięg, minimalny prześwit,
-  stożek pola widzenia).
-- Tolerancja przy znaczniku: Settings ±1–30 mm, domyślnie ±5 mm.
-- Settings: przełącznik „czujnik poziomu” — wyłączony = samo liczenie porcji bez kontroli
-  dawek; czujnik dalej mierzy (GUI), ale nie generuje alarmów; stop + alarm przy 0 kropek
-  (jak z czujnikiem — zmiana 2026-10-15, wcześniej stop przy 30%).
-- Porcje ręczne nie liczą się do limitu dobowego (nadal w ml), ale odejmują się z rezerwy.
-- Kolejka porcji ręcznych: max 20 (kolejne kliknięcia ignorowane bez komunikatu); kolejka
-  przerywana, gdy licznik dojdzie do 0 kropek albo kontrola dawek da alarm.
-- Buzzer: jeden wzorzec `BUZZER_ALARM` — 2 piknięcia 50 ms z przerwą 100 ms, co 120 s
-  (wdrożone). Zdarzenia: 0 kropek (brak wody), kontrola dawek poza tolerancją / brak
-  pomiaru (tylko z czujnikiem), każdy błąd ATO (wdrożone). Alarm trwa do usunięcia
-  przyczyny (albo wyłączenia czujnika) i resetu z GUI / display. Bez ciszy nocnej.
-  Sygnały startowe bez zmian. Zakres rezerwy (żółty) — bez buzzera, tylko GUI / display.
-
-## 13. Później (świadomie odłożone)
-
-- Log zdarzeń w FRAM (za logiem kontroli dawek) + eksport CSV, rozróżnienie testy / praca.
-- Narzędzia analizy logu kontroli dawek, potem korekta czasu pompy (sekcja 7a).
-- Wykrywanie dolania wody do rezerwy (REFILLING) i spadku bez pompy (wyciek).
-- Filtr (Kalman) pomiaru dawek, tryb cień.
-- Wyświetlacz OLED (`docs/DISPLAY_OLED_091.md`) — tylko dane obecne w GUI.
-  Razem z nim potwierdzanie „Rezerwa uzupełniona” bez GUI: od 3a krótkie naciśnięcie
-  przycisku sprzętowego (GPIO 4) tylko kasuje błąd, licznika nie napełnia — dziś bez GUI
-  nie da się potwierdzić uzupełnienia.
-- Usunięcie testu `LVLTEST` (`level_test.*`), gdy procedury z sekcji 4–5 go zastąpią.
-
-## 14. Kolejność wdrożenia
-
-1. ✅ Sterownik + serie + diagnostyka; ✅ cisza pomiarowa po pompie; ✅ test `LVLTEST`.
-2. Settings zbiornika (sekcja 3) — FRAM, API, GUI.
-3. Monitor poziomu (sekcja 7) + rezerwa z czujnika (licznik jako fallback) + progi.
-   ✅ bargraf w ATO Process Monitor (kropki o stałym rozmiarze, kropka = porcja
-   `Single Dose ml`, napełniane od dołu jak woda; pojemność użytkowa bez ukrytego dna,
-   zakres rezerwy na żółto, źródło, wiek pomiaru, „settling”) —
-   dane z `getReserveView()` (`reserve_controller`), pola `res_*` w `/api/status`.
-   Następny krok (sekcja 7a, implementacja od 2026-10-16):
-   a) ✅ licznik porcji z wymiarów w obu trybach (usunięcie `Reserve Volume ml` / licznika ml),
-      widok kropek z licznika, stop + alarm przy 0 kropek, przycisk „Rezerwa uzupełniona”
-      z pomiarem (sekcja 7a, ustalenia 2026-10-16), nowa etykieta checkboxa;
-   b) kontrola dawek w blokach N porcji + tolerancja (Settings), alarm + stop, reset;
-   c) log kontroli w FRAM (ring buffer) + pobieranie CSV z Settings.
-   Potem display i dopracowanie GUI; narzędzia analizy dopiero, gdy kontrola nie sypie
-   alarmami.
-4. Sprawdzenie przy znaczniku (sekcja 4).
-5. ✅ Kalibracja porcjami (sekcja 5) + czas pompy w ms w algorytmie (2026-10-17, przed 3b).
-6. Dolewka ręczna porcjami (sekcja 6).
-7. Buzzer — jeden alarm (sekcja 8).
+- Włączenie pływaka (patrz przypomnienia na górze).
+- Dolewka ręczna porcjami (sekcja 6).
+- Wyświetlacz OLED (`docs/DISPLAY_OLED_091.md`) — dane z GUI (rezerwa, stan pływaka).
+- Ewentualnie lepszy cel dla czujnika (nieprzezroczysty matowy pływak w kominie) — jeśli
+  kiedyś czujnik miałby wrócić do kontroli dawek.
+- Log zdarzeń w FRAM + eksport CSV.

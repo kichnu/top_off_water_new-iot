@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, second sensor for available-water reservoir, fixed-dose pump algorithm with EMA trend tracking, web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates. Full upload commands (serial + OTA): see `README`.
+ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, source-water reservoir monitoring (VL53L4CD level estimate + float switch for the empty stop), fixed-dose pump algorithm with EMA trend tracking, web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates. Full upload commands (serial + OTA): see `README`.
 
 ## Build Commands
 
@@ -42,7 +42,7 @@ algorithm/          Water dosing algorithm
 config/             Configuration and credential management
   config.*             Global settings, system enable/disable
   credentials_manager.*  Dynamic credential loading from FRAM
-  reservoir_config.*     Reservoir geometry + level-sensor settings (FRAM)
+  reservoir_config.*     Reservoir geometry + pump calibration (FRAM)
 
 core/               Logging utilities (Serial + read-only TCP log mirror, port 23)
 
@@ -55,10 +55,10 @@ hardware/           Hardware abstraction layer
   fram_controller.*    FRAM memory management (all persistent data)
   hardware_pins.h      GPIO pin definitions
   level_sensor.*       VL53L4CD ToF reservoir level — non-blocking sample series
-  level_stable.*       Measurement until the level is stable (refill, calibration)
-  pump_calibration.*   Guided portion calibration (10 runs, portion time in ms, FRAM in ReservoirConfig)
+  level_test.*         LVLTEST diagnostic level test (kept for diagnostics)
+  pump_calibration.*   Guided portion calibration (4 runs, mean portion time in ms, FRAM in ReservoirConfig)
   pump_controller.*    ATO pump relay control (auto + direct/manual), run end cut by esp_timer (ms)
-  reserve_controller.* Source-water reserve: portion counter + refill measurement, FRAM-persisted
+  reserve_controller.* Source-water reserve: level-sensor estimate (info) + reservoir float switch (stop)
   rtc_controller.*     DS3231 RTC with NTP sync
   water_sensors.*      Float sensor debouncing (ATO)
 
@@ -92,7 +92,7 @@ Located in `algorithm/water_algorithm.cpp`, states defined in `algorithm_config.
 
 ```
 STATE_IDLE → STATE_DEBOUNCING → STATE_PUMPING → STATE_LOGGING → STATE_IDLE
-Any state → (reserve empty / daily limit / red alert) → STATE_ERROR
+Any state → (reservoir empty — float switch / daily limit / red alert) → STATE_ERROR
 ```
 
 Direct/manual pump control (`/api/pump/direct-on`) bypasses this state machine
@@ -114,7 +114,7 @@ Defined in `hardware/fram_controller.h`:
 - `0x0560-0x0589`: TopOffConfig (40B + 2B checksum), magic=0xA8
 - `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
 - `0x05A2-0x05C3`: ReservoirConfig incl. PumpCalibration (32B + 2B checksum), magic=0xB3
-- `0x05C4-0x05D5`: ReserveState — portion counter + sensor reference (16B + 2B checksum), magic=0xC5
+- `0x05C4-0x05FF`: free (0x05C4-0x05D5 was the reserve portion counter, removed)
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 
 ### Hardware Pin Configuration (Seeed Xiao ESP32-C3)
@@ -127,11 +127,13 @@ Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
 - GPIO 6:  `I2C_SCL_PIN` — I2C bus
 - GPIO 7:  `BUZZER_PIN` — buzzer (**active HIGH**)
 - GPIO 10: `ATO_PUMP_RELAY_PIN` — ATO pump relay (**active HIGH**: HIGH = ON, LOW = OFF)
-- Free: GPIO 2, 8, 9, 20, 21
+- GPIO 20: `RESERVOIR_FLOAT_PIN` — reservoir float switch (INPUT_PULLUP, LOW = no water);
+  temporarily disabled (`RESERVE_FLOAT_ENABLED = 0` in `reserve_controller.h`) until installed
+- Free: GPIO 2, 8, 9, 21 (21 = UART0 TX, driven HIGH by the ROM boot log — no switch to GND)
 
 > Note: output levels are defined as `PUMP_RELAY_ON/OFF` and `BUZZER_LEVEL_ON/OFF` in
-> `hardware_pins.h`. The reservoir float sensor was removed (new PCB, also from
-> code); reserve is a portion counter in `reserve_controller.cpp`, the VL53L4CD verifies refills (and doses, planned).
+> `hardware_pins.h`. Reserve: the VL53L4CD level is an estimate (~±2 cm, information only,
+> no alarms); the pump stop on an empty reservoir is the float switch on GPIO 20.
 > GPIO 9 is the BOOT strap pin (LOW during boot → download mode) — must stay unconnected.
 
 ### Key API Endpoints (Production Mode)
@@ -161,8 +163,7 @@ History/volumes:
 - `GET  /api/fill-water-max` — daily_limit_ml and dose_ml
 - `POST /api/set-fill-water-max` — set daily_limit_ml
 - `GET|POST /api/alg-config` — EMA/alarm-score parameters
-- `GET|POST /api/reserve-config` — reservoir geometry, marker tolerance, portion pause, level sensor on/off
-- `POST /api/reserve/refill` — "Reserve refilled": counter full (sensor off) or level measurement + user decision (sensor on)
+- `GET|POST /api/reserve-config` — reservoir geometry (length, width, sensor → bottom, marker level)
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 
 Full parameter-level reference: see `README`.

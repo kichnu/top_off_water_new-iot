@@ -775,6 +775,71 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         .res-bar-wrap.zone-empty .res-bar-low-fill { background: var(--accent-red); }
 
+        /* ===== Reservoir geometry: oblique wireframe drawing + inputs ===== */
+        .res-geo {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px 20px;
+            align-items: center;
+        }
+
+        .res-geo svg {
+            flex: 0 1 280px;
+            width: 100%;
+            max-width: 280px;
+            height: auto;
+        }
+
+        .res-geo-inputs {
+            flex: 1 1 200px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .res-geo-inputs label {
+            display: grid;
+            grid-template-columns: 22px 1fr 90px;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .res-geo-inputs input { width: 100%; }
+
+        .dim-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            border: 1px solid var(--accent-cyan);
+            transition: color 0.2s, border-color 0.2s, background 0.2s;
+        }
+
+        .res-geo-inputs label.hl .dim-badge {
+            color: var(--bg-primary);
+            background: var(--accent-yellow);
+            border-color: var(--accent-yellow);
+        }
+
+        .tank-edge   { fill: none; stroke: var(--text-secondary); stroke-width: 1.5; stroke-linejoin: round; }
+        .tank-hidden { fill: none; stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+        .tank-water  { fill: var(--accent-blue); fill-opacity: 0.15; stroke: none; }
+        .tank-level  { fill: none; stroke: var(--accent-blue); stroke-width: 1; }
+        .tank-sensor { fill: var(--bg-input); stroke: var(--text-secondary); stroke-width: 1.5; }
+        .dim line, .dim path { stroke: var(--accent-cyan); stroke-width: 1.2; fill: none; }
+        .dim .dim-ext { stroke-width: 0.8; stroke-dasharray: 2 2; opacity: 0.7; }
+        .dim text { fill: var(--accent-cyan); font-size: 13px; font-weight: 700; font-family: inherit; }
+        .dim.hl line, .dim.hl path { stroke: var(--accent-yellow); stroke-width: 2; }
+        .dim.hl .dim-ext { stroke-width: 1; }
+        .dim.hl text { fill: var(--accent-yellow); }
+        #dimArrow path { fill: var(--accent-cyan); stroke: none; }
+
         /* ===== FOURTH CARD: Pump Settings ===== */
         .settings-row {
             display: grid;
@@ -1027,19 +1092,67 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     </div>
 
                     <div style="font-size:0.68rem;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;text-transform:uppercase;margin:16px 0 10px;padding-top:12px;border-top:1px solid var(--border);">Reservoir &amp; Level Sensor</div>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 14px;">
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Length mm (50–2000)
-                            <input type="number" id="resLength" min="50" max="2000" step="1"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Width mm (50–2000)
-                            <input type="number" id="resWidth" min="50" max="2000" step="1"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Sensor &rarr; bottom mm (70–1200)
-                            <input type="number" id="resSensorBottom" min="70" max="1200" step="1"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Marker level mm (from bottom)
-                            <input type="number" id="resMarker" min="20" max="1150" step="1"
-                                style="width:100%;margin-top:3px;"></label>
+                    <div class="res-geo">
+                        <!-- Oblique (cabinet) view: front face = length x height, receding edge = width -->
+                        <svg viewBox="0 0 280 240" role="img" aria-label="Reservoir dimensions">
+                            <defs>
+                                <marker id="dimArrow" viewBox="0 0 10 10" refX="9" refY="5"
+                                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                                    <path d="M0,1 L10,5 L0,9 z"/>
+                                </marker>
+                            </defs>
+                            <!-- water up to the marker level -->
+                            <polygon class="tank-water" points="30,206 180,206 180,116 30,116"/>
+                            <polygon class="tank-water" points="180,206 240,166 240,76 180,116"/>
+                            <polyline class="tank-level" points="30,116 180,116 240,76"/>
+                            <polyline class="tank-hidden" points="30,116 90,76 240,76"/>
+                            <!-- hidden edges -->
+                            <polyline class="tank-hidden" points="30,206 90,166 240,166"/>
+                            <line class="tank-hidden" x1="90" y1="166" x2="90" y2="36"/>
+                            <!-- visible edges -->
+                            <rect class="tank-edge" x="30" y="76" width="150" height="130"/>
+                            <polyline class="tank-edge" points="30,76 90,36 240,36 180,76"/>
+                            <polyline class="tank-edge" points="240,36 240,166 180,206"/>
+                            <!-- sensor above the top centre, beam down to the bottom centre -->
+                            <rect class="tank-sensor" x="122" y="8" width="26" height="10" rx="2"/>
+
+                            <!-- A: length (front bottom edge) -->
+                            <g class="dim" id="dimA">
+                                <line class="dim-ext" x1="30" y1="208" x2="30" y2="228"/>
+                                <line class="dim-ext" x1="180" y1="208" x2="180" y2="228"/>
+                                <line x1="31" y1="222" x2="179" y2="222" marker-start="url(#dimArrow)" marker-end="url(#dimArrow)"/>
+                                <text x="100" y="217">A</text>
+                            </g>
+                            <!-- B: width (receding bottom edge) -->
+                            <g class="dim" id="dimB">
+                                <line class="dim-ext" x1="182" y1="208" x2="196" y2="214"/>
+                                <line class="dim-ext" x1="242" y1="168" x2="256" y2="174"/>
+                                <line x1="195" y1="212" x2="254" y2="173" marker-start="url(#dimArrow)" marker-end="url(#dimArrow)"/>
+                                <text x="230" y="204">B</text>
+                            </g>
+                            <!-- C: sensor face to bottom (along the beam) -->
+                            <g class="dim" id="dimC">
+                                <line x1="135" y1="19" x2="135" y2="185" marker-start="url(#dimArrow)" marker-end="url(#dimArrow)"/>
+                                <text x="141" y="150">C</text>
+                            </g>
+                            <!-- D: marker level from the bottom -->
+                            <g class="dim" id="dimD">
+                                <line class="dim-ext" x1="28" y1="116" x2="8" y2="116"/>
+                                <line class="dim-ext" x1="28" y1="206" x2="8" y2="206"/>
+                                <line x1="14" y1="117" x2="14" y2="205" marker-start="url(#dimArrow)" marker-end="url(#dimArrow)"/>
+                                <text x="17" y="166">D</text>
+                            </g>
+                        </svg>
+                        <div class="res-geo-inputs">
+                            <label data-dim="A"><span class="dim-badge">A</span>Length mm (50–2000)
+                                <input type="number" id="resLength" min="50" max="2000" step="1"></label>
+                            <label data-dim="B"><span class="dim-badge">B</span>Width mm (50–2000)
+                                <input type="number" id="resWidth" min="50" max="2000" step="1"></label>
+                            <label data-dim="C"><span class="dim-badge">C</span>Sensor &rarr; bottom mm (70–1200)
+                                <input type="number" id="resSensorBottom" min="70" max="1200" step="1"></label>
+                            <label data-dim="D"><span class="dim-badge">D</span>Marker level mm (from bottom)
+                                <input type="number" id="resMarker" min="20" max="1150" step="1"></label>
+                        </div>
                     </div>
                     <div id="resDerived" style="font-size:0.72rem;color:var(--text-secondary);margin-top:8px;"></div>
                     <div id="resWarning" style="display:none;color:#fbbf24;font-size:0.72rem;margin-top:6px;"></div>
@@ -1466,6 +1579,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
         // RESERVE BARGRAPH
         // ============================================
         // Level bar from the level sensor — estimate (±2 cm), information only
+        // Litres rounded to 0.1 l (panel boxes only)
+        function fmtL(ml) { return (ml / 1000).toFixed(1) + ' l'; }
+
         function updateReserveBar(d) {
             if (d.res_capacity_ml === undefined) return;
             const wrap = document.getElementById('resBarWrap');
@@ -1579,9 +1695,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     } else {
                         rtcItem.className = "status-info";
                         rtcHint.textContent = "";
-        // Litres rounded to 0.1 l (panel boxes only)
-        function fmtL(ml) { return (ml / 1000).toFixed(1) + ' l'; }
-
                     }
 
                     // Memory & Uptime
@@ -1958,6 +2071,22 @@ const char* DASHBOARD_HTML = R"rawliteral(
             w.textContent = d.warning || '';
             w.style.display = d.warning ? '' : 'none';
         }
+
+        // Highlight the drawing dimension that belongs to the focused / hovered input
+        document.querySelectorAll('.res-geo-inputs label').forEach(function(lbl) {
+            var dim = document.getElementById('dim' + lbl.dataset.dim);
+            function on()  { lbl.classList.add('hl');    dim.classList.add('hl'); }
+            function off() {
+                if (lbl.contains(document.activeElement)) return;
+                lbl.classList.remove('hl'); dim.classList.remove('hl');
+            }
+            lbl.addEventListener('mouseenter', on);
+            lbl.addEventListener('mouseleave', off);
+            lbl.querySelector('input').addEventListener('focus', on);
+            lbl.querySelector('input').addEventListener('blur', function() {
+                lbl.classList.remove('hl'); dim.classList.remove('hl');
+            });
+        });
 
         function loadReserveConfig() {
             secureFetch('api/reserve-config')

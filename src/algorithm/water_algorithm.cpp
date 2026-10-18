@@ -277,14 +277,27 @@ void WaterAlgorithm::finishPumpCycle() {
                          ? (nowTs - lastTopOffTimestamp) : 0;
     lastTopOffTimestamp = nowTs;
 
+    // The interval is the time the PREVIOUS dose took to evaporate, so the rate uses
+    // that cycle's dose — otherwise the first cycle after a dose change is skewed
+    uint16_t rateDoseMl = config.dose_ml;
+    if (intervalS > 0) {
+        TopOffRecord prev;
+        framBusy = true;
+        bool havePrev = loadLastTopOffRecord(prev);
+        framBusy = false;
+        if (havePrev && prev.dose_ml_record >= 50 && prev.dose_ml_record <= 5000) {
+            rateDoseMl = prev.dose_ml_record;
+        }
+    }
+
     float rateMlH = (intervalS > 0)
-                    ? ((float)config.dose_ml / intervalS * 3600.0f)
+                    ? ((float)rateDoseMl / intervalS * 3600.0f)
                     : 0.0f;
 
     LOG_INFO("");
     LOG_INFO("====================================");
     LOG_INFO("CYCLE COMPLETE");
-    LOG_INFO("  dose_ml   : %d ml", config.dose_ml);
+    LOG_INFO("  dose_ml   : %d ml (rate from the previous dose %d ml)", config.dose_ml, rateDoseMl);
     LOG_INFO("  interval  : %lu s", intervalS);
     LOG_INFO("  rate      : %.2f ml/h", rateMlH);
     LOG_INFO("  hour      : %d", hourOfDay);

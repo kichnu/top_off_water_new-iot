@@ -86,7 +86,7 @@ System Control → **Pump ON** / **OFF** (`/api/pump/direct-on`, `/api/pump/dire
 ### EMA / Alarm Score
 
 After each cycle:
-- **rate** [ml/h] = `dose_ml / interval_since_last_cycle × 3600`
+- **rate** [ml/h] = `previous cycle's dose_ml / interval_since_last_cycle × 3600` (the interval is the time the previous dose took to evaporate, so a dose change does not skew the first cycle after it)
 - **ema_rate_ml_h** — EMA of rate (`EMA_ALPHA` 0.20, per-step deviation clamped to `EMA_CLAMP` 0.40)
 - **d** = `(rate - ema_rate) / ema_rate`
 - **alarm_score**: grows by `ALARM_P1 × log2(1+d) × 100` when `d > 0` (`ALARM_P1` 0.10); decays by factor `ALARM_P2` (0.80) when `d <= 0` (persists across restarts)

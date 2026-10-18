@@ -775,6 +775,25 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         .res-bar-wrap.zone-empty .res-bar-low-fill { background: var(--accent-red); }
 
+        /* ===== Algorithm parameters: one line on desktop, stacked on mobile ===== */
+        .alg-inputs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 20px;
+        }
+
+        .alg-inputs label {
+            flex: 1 1 200px;
+            display: grid;
+            grid-template-columns: 1fr 80px;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .alg-inputs input { width: 100%; }
+
         /* ===== Reservoir geometry: oblique wireframe drawing + inputs ===== */
         .res-geo {
             display: flex;
@@ -1043,7 +1062,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 <div style="font-size:0.7rem;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:5px;padding-left:2px;">Evaporation Rate (ml/h)</div>
                 <div style="display:flex;gap:8px;margin-bottom:8px;">
                     <button class="btn btn-secondary" onclick="loadCycleHistory()" id="loadCyclesBtn" style="flex:1;">Load History</button>
-                    <button class="btn btn-secondary" onclick="deleteCycleHistory()" id="deleteCyclesBtn" style="flex:1;color:#f87171;border-color:rgba(248,113,113,0.3);">Delete Data</button>
                 </div>
                 <div id="chartRateScroll" class="chart-rate-scroll">
                     <canvas id="chartRate"></canvas>
@@ -1059,36 +1077,20 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 </div>
                 <div id="algSettingsPanel" style="display:none;margin-top:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;">
                     <div style="font-size:0.68rem;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px;">Algorithm Parameters</div>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 14px;">
-                        <label style="font-size:0.72rem;color:var(--text-muted);">EMA Alpha (0.05–0.50)
-                            <input type="number" id="algAlpha" min="0.05" max="0.50" step="0.01"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">EMA Clamp (0.10–0.80)
-                            <input type="number" id="algClamp" min="0.10" max="0.80" step="0.01"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">P1 spike weight (0.01–2.0)
-                            <input type="number" id="algP1" min="0.01" max="2.0" step="0.01"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">P2 decay speed (0.05–0.99)
-                            <input type="number" id="algP2" min="0.05" max="0.99" step="0.01"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Zone Green (1–200)
-                            <input type="number" id="algZoneGreen" min="1" max="200" step="0.5"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Zone Yellow (&gt;green, max 500)
-                            <input type="number" id="algZoneYellow" min="1" max="500" step="0.5"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Initial EMA ml/h (1–500)
-                            <input type="number" id="algInitEma" min="1" max="500" step="1"
-                                style="width:100%;margin-top:3px;"></label>
-                        <label style="font-size:0.72rem;color:var(--text-muted);">Chart Y-Max ml/h (blank=auto)
-                            <input type="number" id="algChartYMax" min="10" max="5000" step="10"
-                                placeholder="auto" style="width:100%;margin-top:3px;"></label>
+                    <div class="alg-inputs">
+                        <label>Zone Green (1–200)
+                            <input type="number" id="algZoneGreen" min="1" max="200" step="0.5"></label>
+                        <label>Zone Yellow (&le;500)
+                            <input type="number" id="algZoneYellow" min="1" max="500" step="0.5"></label>
+                        <label>Initial EMA ml/h (1–500)
+                            <input type="number" id="algInitEma" min="1" max="500" step="1"></label>
                     </div>
                     <div id="algSettingsError" style="display:none;color:#f87171;font-size:0.72rem;margin-top:8px;"></div>
                     <div style="display:flex;gap:8px;margin-top:10px;">
                         <button class="btn btn-primary btn-small" onclick="saveAlgSettings()" id="algSaveBtn">Save</button>
                         <button class="btn btn-secondary btn-small" onclick="toggleAlgSettings()">Cancel</button>
+                        <button class="btn btn-secondary btn-small" onclick="deleteCycleHistory()" id="deleteCyclesBtn"
+                            style="margin-left:auto;color:#f87171;border-color:rgba(248,113,113,0.3);">Delete Data</button>
                     </div>
 
                     <div style="font-size:0.68rem;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;text-transform:uppercase;margin:16px 0 10px;padding-top:12px;border-top:1px solid var(--border);">Reservoir &amp; Level Sensor</div>
@@ -1859,7 +1861,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
         }
 
         var CHART_Y_MAX_FACTOR = 3;   // auto Y-max = ema_rate * CHART_Y_MAX_FACTOR
-        var chartYMaxOverride = null; // null = auto; set by user in algSettingsPanel (RAM only)
 
         function drawRateChart(pts, ema) {
             var RING_SIZE = 60;
@@ -1882,11 +1883,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
             ctx.fillStyle = CC.bg;
             ctx.fillRect(0, 0, W, H);
 
-            // Y-max: user override or auto (ema_rate * factor, fallback 300)
+            // Y-max: ema_rate * factor, fallback 300
             var hasEma = ema.ema_rate > 0.01;
-            var autoYMax = hasEma ? ema.ema_rate * CHART_Y_MAX_FACTOR : 300;
-            var yMax = (chartYMaxOverride !== null && chartYMaxOverride > 0)
-                       ? chartYMaxOverride : autoYMax;
+            var yMax = hasEma ? ema.ema_rate * CHART_Y_MAX_FACTOR : 300;
 
             function yOf(v) { return p.t + (1 - Math.min(v, yMax) / yMax) * ch; }
 
@@ -2039,14 +2038,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     .then(function(r) { return r ? r.json() : null; })
                     .then(function(d) {
                         if (!d || !d.success) return;
-                        document.getElementById('algAlpha').value     = d.ema_alpha;
-                        document.getElementById('algClamp').value     = d.ema_clamp;
-                        document.getElementById('algP1').value        = d.alarm_p1;
-                        document.getElementById('algP2').value        = d.alarm_p2;
                         document.getElementById('algZoneGreen').value = d.zone_green;
                         document.getElementById('algZoneYellow').value= d.zone_yellow;
                         document.getElementById('algInitEma').value   = d.initial_ema;
-                        document.getElementById('algChartYMax').value = chartYMaxOverride !== null ? chartYMaxOverride : '';
                     })
                     .catch(function(e) { console.error('alg-config GET error:', e); });
                 loadReserveConfig();
@@ -2135,25 +2129,14 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var errEl = document.getElementById('algSettingsError');
             errEl.style.display = 'none';
 
-            var alpha   = parseFloat(document.getElementById('algAlpha').value);
-            var clamp   = parseFloat(document.getElementById('algClamp').value);
-            var p1      = parseFloat(document.getElementById('algP1').value);
-            var p2      = parseFloat(document.getElementById('algP2').value);
             var zGreen  = parseFloat(document.getElementById('algZoneGreen').value);
             var zYellow = parseFloat(document.getElementById('algZoneYellow').value);
             var initEma = parseFloat(document.getElementById('algInitEma').value);
-            var chartYMaxRaw = document.getElementById('algChartYMax').value.trim();
-            var chartYMaxVal = chartYMaxRaw === '' ? NaN : parseFloat(chartYMaxRaw);
 
             var err = '';
-            if (isNaN(alpha)   || alpha < 0.05 || alpha > 0.50)        err = 'EMA Alpha: 0.05–0.50';
-            else if (isNaN(clamp) || clamp < 0.10 || clamp > 0.80)     err = 'EMA Clamp: 0.10–0.80';
-            else if (isNaN(p1)  || p1 < 0.01 || p1 > 2.0)             err = 'P1: 0.01–2.0';
-            else if (isNaN(p2)  || p2 < 0.05 || p2 > 0.99)            err = 'P2: 0.05–0.99';
-            else if (isNaN(zGreen) || zGreen < 1 || zGreen > 200)      err = 'Zone Green: 1–200';
+            if (isNaN(zGreen) || zGreen < 1 || zGreen > 200)      err = 'Zone Green: 1–200';
             else if (isNaN(zYellow) || zYellow <= zGreen || zYellow > 500) err = 'Zone Yellow: must be > Zone Green and ≤ 500';
             else if (isNaN(initEma) || initEma < 1 || initEma > 500)   err = 'Initial EMA: 1–500 ml/h';
-            else if (!isNaN(chartYMaxVal) && (chartYMaxVal < 10 || chartYMaxVal > 5000)) err = 'Chart Y-Max: 10–5000 ml/h (or blank for auto)';
 
             if (err) {
                 errEl.textContent = err;
@@ -2164,11 +2147,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var btn = document.getElementById('algSaveBtn');
             btn.disabled = true; btn.textContent = 'Saving...';
 
-            var algBody = 'ema_alpha='    + alpha    +
-                          '&ema_clamp='   + clamp    +
-                          '&alarm_p1='    + p1       +
-                          '&alarm_p2='    + p2       +
-                          '&zone_green='  + zGreen   +
+            var algBody = 'zone_green='   + zGreen   +
                           '&zone_yellow=' + zYellow  +
                           '&initial_ema=' + initEma;
 
@@ -2180,7 +2159,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             .then(function(r) { return r ? r.json() : Promise.reject('no response'); })
             .then(function(d) {
                 if (!d || !d.success) return Promise.reject((d && d.error) || 'Alg save failed');
-                chartYMaxOverride = isNaN(chartYMaxVal) ? null : chartYMaxVal;
                 btn.textContent = 'Saved';
                 setTimeout(function() { btn.textContent = 'Save'; }, 3000);
             })

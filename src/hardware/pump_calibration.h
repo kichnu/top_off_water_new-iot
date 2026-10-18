@@ -4,17 +4,16 @@
 #include <Arduino.h>
 
 // Pump calibration in the working point (portion = Single Dose ml).
-// The user sets the portion as the first step; the first run starts by itself
-// CAL_START_DELAY_MS later, runs 2..CAL_RUNS are started by the user after a
-// fixed pause (water in the hose drains back). The user stops each run when
+// The user sets the portion as the first step and starts every run; run 1 is
+// available at once, runs 2..CAL_RUNS after a fixed pause (water in the hose
+// drains back). The user stops each run when
 // the vessel reaches the portion mark; the firmware measures the run time in ms.
 // Right after the last run the result (mean time) can be confirmed or rejected.
 // No level measurement during the calibration. Changing Single Dose ml is only
 // possible through this procedure.
 
 #define CAL_RUNS                4
-#define CAL_START_DELAY_MS   5000UL   // Start calibration → run 1 starts by itself
-#define CAL_PAUSE_MS        20000UL   // between runs: hose drains back, vessel emptied
+#define CAL_PAUSE_MS        10000UL   // between runs: hose drains back, vessel emptied
 #define CAL_RUN_MAX_MS     300000UL   // a run left running this long aborts the calibration
 #define CAL_SPREAD_WARN_PCT    20     // max − min above this % of the mean → hint to repeat
 #define CAL_DOSE_MIN_ML         1
@@ -23,7 +22,7 @@
 
 enum CalPhase : uint8_t {
     CAL_IDLE      = 0,
-    CAL_COUNTDOWN = 1,   // run 1 starts by itself when the countdown ends
+    // 1 unused (was: countdown to an automatic run 1) — values are part of the API
     CAL_READY     = 2,   // waiting for "Start run" (pause between runs enforced)
     CAL_RUNNING   = 3,   // pump on, waiting for "Stop"
     CAL_RESULT    = 4,   // result shown, waiting for confirm / cancel
@@ -34,7 +33,7 @@ struct CalStatus {
     uint16_t    doseMl;              // portion being calibrated
     uint8_t     runs;                // completed runs
     uint32_t    runMs[CAL_RUNS];
-    uint32_t    pauseLeftS;          // COUNTDOWN / READY: seconds until the next run
+    uint32_t    pauseLeftS;          // READY: seconds until the next run may start
     uint32_t    runElapsedMs;        // RUNNING
     // Result
     uint32_t    meanMs, minMs, maxMs;

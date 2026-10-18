@@ -98,9 +98,9 @@ Zones: `score < zone_green` (default 20) → green, `< zone_yellow` (default 50)
 ## Pump Calibration
 
 The pump is calibrated in its working point: the portion (`dose_ml`) is pumped as a fixed time, which includes the start-up and the hose drain (a ml/s model does not fit these short runs). Settings → Pump Calibration & Single Dose (`src/hardware/pump_calibration.*`):
-1. Step 1 sets the portion (Single Dose ml). This is the only way to change it, so a new portion always gets a new calibration. Starting switches the system to Service Mode, which stays on until the user switches back to Auto.
-2. Run 1 starts by itself 5 s after Start calibration; the user presses Stop when the measuring vessel reaches the portion mark. The firmware times the run in ms.
-3. Runs 2–4 are started by the user after a fixed 20 s pause (the hose drains back, the vessel is emptied — not back into the reservoir).
+1. Step 1 sets the portion (Single Dose ml). This is the only way to change it, so a new portion always gets a new calibration. Starting switches the system to Service Mode (the ATO stops; no confirmation dialog in the GUI), which stays on until the user switches back to Auto.
+2. The user starts each run with Start run (run 1 right after Start calibration) and presses Stop when the measuring vessel reaches the portion mark. The firmware times the run in ms.
+3. Runs 2–4 can be started after a fixed 10 s pause (`CAL_PAUSE_MS`; the hose drains back, the vessel is emptied — not back into the reservoir).
 4. Right after run 4 the result is shown: mean, min/max and sd of the run times (a hint when max − min exceeds 20% of the mean). Save stores the mean as the portion time, the portion, and the derived `volume_per_second` (used only to estimate direct pump runs); Reject leaves everything unchanged.
 
 No level measurement during the calibration. The pump end is cut by a one-shot `esp_timer`, so the run time is exact to the ms and does not depend on the loop() period. Without a calibration for the current portion (new hardware, or a stored calibration for another portion) the portion time is a fixed `DEFAULT_PORTION_MS` = 5 s — short and safe — and the GUI shows "Calibrate the pump" (yellow); after the calibration it shows "Pump calibrated" (green).

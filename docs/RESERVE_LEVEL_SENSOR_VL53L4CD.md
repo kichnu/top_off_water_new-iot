@@ -61,12 +61,14 @@ poziomu” (bajt `flags`).
 
 ## 5. Kalibracja pompy porcjami (wdrożone 2026-10-17, v5)
 
-Porcja = `Single Dose ml`, zmieniana tylko w kalibracji (pierwszy krok). Wejście = Service Mode
+Porcja = `Single Dose ml`, zmieniana tylko w kalibracji (pierwszy krok). Wejście (bez okna
+potwierdzenia w GUI — ATO się zatrzymuje) = Service Mode
 bez automatycznego powrotu do Auto.
 
-1. Start kalibracji → po 5 s pompa rusza sama (przebieg 1); użytkownik zatrzymuje na znaczniku
+1. Start kalibracji → przebieg 1 uruchamia użytkownik („Start run”, bez automatycznego startu
+   pompy — zmiana 2026-10-18); zatrzymuje na znaczniku
    naczynia, firmware mierzy czas w ms.
-2. 20 s przerwy (cofnięcie wody w wężyku, opróżnienie naczynia — nie do zbiornika), potem
+2. 10 s przerwy (`CAL_PAUSE_MS`, było 20 s; cofnięcie wody w wężyku, opróżnienie naczynia — nie do zbiornika), potem
    przycisk „Start run” dla przebiegów 2, 3, 4.
 3. Od razu po 4. przebiegu wynik: średnia, min/max, sd; podpowiedź „powtórz”, gdy max − min
    > 20% średniej. Save → czas porcji = średnia (FRAM), `volume_per_second` = porcja / czas;

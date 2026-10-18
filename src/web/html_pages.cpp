@@ -438,7 +438,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             margin-top: 5px; font-size: 0.72rem;
         }
         .sub-on     { color: var(--accent-green); }
-        .sub-off    { color: var(--text-muted); }
+        .sub-off    { color: var(--text-secondary); }
         .sub-warn   { color: var(--accent-yellow); }
         .sub-danger { color: var(--accent-red); }
         .sub-sep    { color: var(--border); }
@@ -1401,7 +1401,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
         }
 
         function calOpen() {
-            if (!confirm('Enter the pump calibration?\nThe system switches to Service Mode (ATO stops) until you switch it back to Auto.')) return;
             calSetupOpen = true;
             calKey = '';
             if (lastStatus) updateCalibration(lastStatus);
@@ -1465,7 +1464,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
             if (phase === 0) {
                 txt.innerHTML = 'Step 1 \u2014 portion. Prepare a measuring vessel with a mark at the portion. ' +
-                    'Run 1 starts by itself 5 s after Start calibration. ' +
+                    'Each run is started with Start run and stopped exactly at the mark. ' +
                     'After each run empty the vessel \u2014 <b>not back into the reservoir</b>. ' +
                     'The reservoir needs 4 portions + 1.';
                 key = 'setup';
@@ -1473,11 +1472,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                        '<input type="number" id="calDoseInput" min="1" max="2000" step="1" value="' + dose + '" style="width:110px;"></label>' +
                        calBtn('Start calibration', 'calStart()', 'btn-primary') +
                        calBtn('Close', 'calSetupOpen=false;updateStatus()');
-            } else if (phase === 1) {
-                txt.innerHTML = '<span class="cal-big">Run 1 / ' + d.cal_runs_total + '</span> \u2014 portion ' + d.cal_dose_ml + ' ml. ' +
-                    'Empty vessel in place \u2014 the pump starts in ' + d.cal_pause_left + ' s. Stop exactly at the mark.';
-                key = 'countdown';
-                html = calBtn('Cancel', "calAction('cancel')");
             } else if (phase === 2) {
                 const n = d.cal_runs + 1;
                 txt.innerHTML = '<span class="cal-big">Run ' + n + ' / ' + d.cal_runs_total + '</span> \u2014 portion ' + d.cal_dose_ml + ' ml. ' +

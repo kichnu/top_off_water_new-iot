@@ -10,7 +10,7 @@
 
 static CalStatus     g_cal       = {};
 static uint32_t      g_runStart  = 0;
-static uint32_t      g_lastEnd   = 0;      // millis() when the last run stopped / countdown began
+static uint32_t      g_lastEnd   = 0;      // millis() when the last run stopped
 static volatile bool g_stopping  = false;  // web "stop" in progress — not an external stop
 
 static void resetStatus(uint16_t dose) {
@@ -75,10 +75,9 @@ const char* startPumpCalibration(uint16_t doseMl) {
 
     setSystemState(false);   // Service Mode without the boot auto-enable timer
     resetStatus(doseMl);
-    g_cal.phase = CAL_COUNTDOWN;
-    g_lastEnd   = millis();
-    LOG_INFO("Calibration started — portion %u ml, run 1 in %lu s",
-             doseMl, CAL_START_DELAY_MS / 1000);
+    g_cal.phase = CAL_READY;
+    g_lastEnd   = millis() - CAL_PAUSE_MS;   // no pause before run 1 — the user starts it
+    LOG_INFO("Calibration started — portion %u ml, waiting for run 1", doseMl);
     return nullptr;
 }
 
@@ -97,6 +96,7 @@ const char* pumpCalibrationAction(const String& action) {
     if (action == "run") {
         if (g_cal.phase != CAL_READY) return "Not ready for a run";
         if (g_cal.pauseLeftS > 0)     return "Pause between portions — wait";
+        if (isPumpActive() || isDirectPumpMode()) return "Pump running — wait until it stops";
         return startRun();
     }
 
@@ -156,14 +156,6 @@ static uint32_t secondsLeft(uint32_t waitMs) {
 
 void updatePumpCalibration() {
     switch (g_cal.phase) {
-        case CAL_COUNTDOWN: {
-            g_cal.pauseLeftS = secondsLeft(CAL_START_DELAY_MS);
-            if (g_cal.pauseLeftS == 0) {
-                const char* err = isPumpActive() ? "pump already running" : startRun();
-                if (err) abortCalibration(err);
-            }
-            break;
-        }
         case CAL_READY:
             g_cal.pauseLeftS = secondsLeft(CAL_PAUSE_MS);
             break;

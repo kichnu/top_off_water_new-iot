@@ -1075,7 +1075,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 <div style="display:flex;gap:8px;margin-bottom:8px;">
                     <button class="btn btn-secondary" onclick="loadCycleHistory()" id="loadCyclesBtn" style="flex:1;">Load History</button>
                 </div>
-                <div id="chartRateScroll" class="chart-rate-scroll">
+                <!-- Hidden until Load History (empty canvas after a page refresh) -->
+                <div id="chartRateScroll" class="chart-rate-scroll" style="display:none;">
                     <canvas id="chartRate"></canvas>
                 </div>
                 <div class="chart-legend" style="align-items:center;">
@@ -1995,6 +1996,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         alarm_p1:    data.alarm_p1    || 0.10,
                         ema_clamp:   data.ema_clamp   || 0.40
                     };
+                    // Show before drawing — the chart width comes from the container
+                    document.getElementById('chartRateScroll').style.display = '';
                     drawRateChart(pts, ema);
                 })
                 .catch(function(e) { console.error("Load cycles error:", e); })

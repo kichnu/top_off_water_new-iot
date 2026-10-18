@@ -711,14 +711,31 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         .panel-row input { flex: 1; min-width: 0; }
 
+        /* Capacity and remaining water: one line on desktop, wraps on narrow screens */
         .res-meta {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            margin-top: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 2px 16px;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
         }
 
+        .res-meta .is-muted { color: var(--text-muted); }
+        .res-meta .is-warn  { color: var(--accent-yellow); }
+        .res-meta .is-alarm { color: var(--accent-red); }
+
+        .res-note {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .res-note:empty { display: none; }
+
         /* Source-water reserve: level bar from the level sensor (0 = hidden bottom,
-           100% = marker); the tick marks the top of the yellow reserve range */
+           100% = marker); the reserve range has its own (yellow) color */
         .res-bar-wrap {
             position: relative;
             height: 14px;
@@ -735,17 +752,28 @@ const char* DASHBOARD_HTML = R"rawliteral(
             transition: width 0.3s, background 0.3s;
         }
 
-        .res-bar-wrap.zone-low   .res-bar-fill { background: var(--accent-yellow); }
-        .res-bar-wrap.zone-empty .res-bar-fill { background: var(--accent-red); }
-
+        /* Reserve range: faint background over its whole width, solid where filled */
         .res-bar-low {
             position: absolute;
             top: 0;
             bottom: 0;
             left: 0;
-            border-right: 2px solid var(--accent-yellow);
+            background: rgba(234, 179, 8, 0.18);
             pointer-events: none;
         }
+
+        .res-bar-low-fill {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 0%;
+            background: var(--accent-yellow);
+            transition: width 0.3s, background 0.3s;
+            pointer-events: none;
+        }
+
+        .res-bar-wrap.zone-empty .res-bar-low-fill { background: var(--accent-red); }
 
         /* ===== FOURTH CARD: Pump Settings ===== */
         .settings-row {
@@ -919,20 +947,20 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 </div>
                 <h2>ATO Process Monitor</h2>
             </div>
-            <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <button class="btn btn-secondary" onclick="loadCycleHistory()" id="loadCyclesBtn" style="flex:1;">Load History</button>
-                <button class="btn btn-secondary" onclick="deleteCycleHistory()" id="deleteCyclesBtn" style="flex:1;color:#f87171;border-color:rgba(248,113,113,0.3);">Delete Data</button>
-            </div>
             <div class="panel-box">
                 <div class="panel-head">
-                    <span class="panel-title">Source Water Reserve</span>
-                    <span class="panel-value" id="resText">&#8212;</span>
+                    <span class="panel-title">Water Reserve</span>
                 </div>
                 <div class="res-bar-wrap" id="resBarWrap">
                     <div class="res-bar-fill" id="resBarFill"></div>
                     <div class="res-bar-low" id="resBarLow"></div>
+                    <div class="res-bar-low-fill" id="resBarLowFill"></div>
                 </div>
-                <div class="res-meta" id="resMeta"></div>
+                <div class="res-meta">
+                    <span id="resCapacity">&#8212;</span>
+                    <span id="resLeft"></span>
+                </div>
+                <div class="res-note" id="resNote"></div>
             </div>
             <div class="panel-box">
                 <div class="panel-head">
@@ -948,6 +976,10 @@ const char* DASHBOARD_HTML = R"rawliteral(
             </div>
             <div class="chart-wrap">
                 <div style="font-size:0.7rem;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:5px;padding-left:2px;">Evaporation Rate (ml/h)</div>
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                    <button class="btn btn-secondary" onclick="loadCycleHistory()" id="loadCyclesBtn" style="flex:1;">Load History</button>
+                    <button class="btn btn-secondary" onclick="deleteCycleHistory()" id="deleteCyclesBtn" style="flex:1;color:#f87171;border-color:rgba(248,113,113,0.3);">Delete Data</button>
+                </div>
                 <div id="chartRateScroll" class="chart-rate-scroll">
                     <canvas id="chartRate"></canvas>
                 </div>
@@ -1437,40 +1469,45 @@ const char* DASHBOARD_HTML = R"rawliteral(
         function updateReserveBar(d) {
             if (d.res_capacity_ml === undefined) return;
             const wrap = document.getElementById('resBarWrap');
-            const text = document.getElementById('resText');
-            const meta = document.getElementById('resMeta');
+            const capEl = document.getElementById('resCapacity');
+            const leftEl = document.getElementById('resLeft');
+            const note = document.getElementById('resNote');
 
             // The level bar needs the reservoir geometry saved in Settings
             if (!d.res_configured) {
                 wrap.style.display = 'none';
-                text.textContent = 'not configured';
-                text.className = 'panel-value is-muted';
-                meta.textContent = 'Enter the reservoir dimensions in Settings \u2192 Reservoir & Level Sensor';
+                capEl.textContent = 'Not configured';
+                capEl.className = 'is-muted';
+                leftEl.textContent = '';
+                note.textContent = 'Enter the reservoir dimensions in Settings \u2192 Reservoir & Level Sensor';
                 return;
             }
             wrap.style.display = '';
+            capEl.className = '';
 
             const zones = ['zone-ok', 'zone-low', 'zone-empty', 'zone-unknown'];
             wrap.className = 'res-bar-wrap ' + (zones[d.res_zone] || 'zone-unknown');
             const cap = d.res_capacity_ml || 1;
-            document.getElementById('resBarLow').style.width = Math.min(100, d.res_low_ml * 100 / cap) + '%';
-            document.getElementById('resBarFill').style.width = (d.res_reading ? Math.min(100, d.res_pct) : 0) + '%';
+            const lowPct = Math.min(100, d.res_low_ml * 100 / cap);
+            const fillPct = d.res_reading ? Math.min(100, d.res_pct) : 0;
+            document.getElementById('resBarLow').style.width = lowPct + '%';
+            document.getElementById('resBarLowFill').style.width = Math.min(fillPct, lowPct) + '%';
+            document.getElementById('resBarFill').style.width = fillPct + '%';
 
-            const parts = [];
+            capEl.textContent = 'Capacity: ' + d.res_capacity_ml + ' ml / ' + d.res_capacity_portions + ' doses';
+
+            const notes = [];
             if (d.res_reading) {
-                text.textContent = '\u2248 ' + d.res_portions + ' / ' + d.res_capacity_portions + ' portions';
-                text.className = 'panel-value' + (d.res_zone === 2 ? ' is-alarm' : d.res_zone === 1 ? ' is-warn' : '');
-                parts.push('\u2248 ' + d.res_ml + ' ml \u00b7 ' + d.res_pct.toFixed(0) + '% \u00b7 portion ' + d.res_dose_ml + ' ml');
-                parts.push('water ' + d.res_water_mm.toFixed(0) + ' / ' + d.res_marker_mm + ' mm' +
-                           (d.level_age_s >= 0 ? ', ' + d.level_age_s + ' s ago' : ''));
+                leftEl.textContent = 'Left: \u2248 ' + d.res_ml + ' ml / ' + d.res_portions + ' doses';
+                leftEl.className = d.res_zone === 2 ? 'is-alarm' : d.res_zone === 1 ? 'is-warn' : '';
             } else {
-                text.textContent = 'no reading';
-                text.className = 'panel-value is-muted';
-                parts.push('level sensor ' + (d.level_sensor || '?'));
+                leftEl.textContent = 'Left: no reading';
+                leftEl.className = 'is-muted';
+                notes.push('level sensor ' + (d.level_sensor || '?'));
             }
-            if (d.level_settling) parts.push('settling after pump');
-            if (d.reserve_float && d.reserve_float !== 'ok') parts.push('float switch: ' + d.reserve_float);
-            meta.textContent = parts.join(' \u00b7 ');
+            if (d.level_settling) notes.push('settling after pump');
+            if (d.reserve_float && d.reserve_float !== 'ok') notes.push('float switch: ' + d.reserve_float);
+            note.textContent = notes.join(' \u00b7 ');
         }
 
         let lastStatus = null;

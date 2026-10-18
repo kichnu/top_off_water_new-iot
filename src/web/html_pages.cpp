@@ -738,7 +738,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
            100% = marker); the reserve range has its own (yellow) color */
         .res-bar-wrap {
             position: relative;
-            height: 14px;
+            height: 8px;
             margin-top: 6px;
             background: var(--bg-primary);
             border-radius: 7px;
@@ -964,8 +964,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
             </div>
             <div class="panel-box">
                 <div class="panel-head">
-                    <span class="panel-title">Rolling 24h Refill</span>
-                    <span class="panel-value" id="volumeText">0 ml / 2000 ml</span>
+                    <span class="panel-title">Added in 24h</span>
+                    <span class="panel-value" id="volumeText">0.0 l / 2.0 l</span>
                 </div>
                 <div class="volume-bar"><div class="volume-bar-fill" id="volumeBarFill"></div></div>
                 <div class="panel-row">
@@ -1494,11 +1494,11 @@ const char* DASHBOARD_HTML = R"rawliteral(
             document.getElementById('resBarLowFill').style.width = Math.min(fillPct, lowPct) + '%';
             document.getElementById('resBarFill').style.width = fillPct + '%';
 
-            capEl.textContent = 'Capacity: ' + d.res_capacity_ml + ' ml / ' + d.res_capacity_portions + ' doses';
+            capEl.textContent = 'Capacity: ' + fmtL(d.res_capacity_ml) + ' / ' + d.res_capacity_portions + ' doses';
 
             const notes = [];
             if (d.res_reading) {
-                leftEl.textContent = 'Left: \u2248 ' + d.res_ml + ' ml / ' + d.res_portions + ' doses';
+                leftEl.textContent = 'Left: \u2248 ' + fmtL(d.res_ml) + ' / ' + d.res_portions + ' doses';
                 leftEl.className = d.res_zone === 2 ? 'is-alarm' : d.res_zone === 1 ? 'is-warn' : '';
             } else {
                 leftEl.textContent = 'Left: no reading';
@@ -1579,6 +1579,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     } else {
                         rtcItem.className = "status-info";
                         rtcHint.textContent = "";
+        // Litres rounded to 0.1 l (panel boxes only)
+        function fmtL(ml) { return (ml / 1000).toFixed(1) + ' l'; }
+
                     }
 
                     // Memory & Uptime
@@ -1610,10 +1613,10 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     const limit    = data.daily_limit_ml;
                     const dose     = data.dose_ml;
 
-                    // Rolling 24h Refill Limit bar
+                    // Added in 24h vs. daily limit bar
                     const pctUsed = limit > 0 ? Math.min((rolling / limit) * 100, 100) : 0;
                     document.getElementById("volumeBarFill").style.width = pctUsed + "%";
-                    document.getElementById("volumeText").textContent = rolling + " ml / " + limit + " ml";
+                    document.getElementById("volumeText").textContent = fmtL(rolling) + " / " + fmtL(limit);
 
                     // Populate inputs with current saved values (skip if user is editing)
                     const limitInp = document.getElementById("dailyLimitInput");

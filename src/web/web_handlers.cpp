@@ -137,6 +137,9 @@ void handleStatus(AsyncWebServerRequest* request) {
     json["sensor_active"] = readWaterSensor();
     json["pump_active"] = isPumpActive();
     json["direct_pump_mode"] = isDirectPumpMode();
+    json["manual_left"]      = getManualPortionsLeft();
+    json["manual_done"]      = getManualPortionsDone();
+    json["manual_pause"]     = isManualPause();
     json["system_error"] = (waterAlgorithm.getState() == STATE_ERROR);
     
     // ============================================
@@ -286,19 +289,13 @@ void handleDirectPumpOn(AsyncWebServerRequest* request) {
         return;
     }
 
-    uint16_t duration = currentPumpSettings.manualCycleSeconds;
-    String mode = "bistable";
-    if (request->hasParam("mode", true) && request->getParam("mode", true)->value() == "monostable") {
-        duration = DIRECT_PUMP_SAFETY_TIMEOUT_S;
-        mode = "monostable";
-    }
-
-    bool success = directPumpOn(duration);
+    // Each ON adds one portion to the manual queue
+    bool success = manualPortionAdd();
 
     JsonDocument json;
-    json["success"] = success;
-    json["duration"] = duration;
-    json["mode"] = mode;
+    json["success"]      = success;
+    json["portions_left"] = getManualPortionsLeft();
+    if (!success) json["error"] = isDirectPumpMode() ? "Queue full" : "Pump busy";
 
     String response;
     serializeJson(json, response);
@@ -311,7 +308,7 @@ void handleDirectPumpOff(AsyncWebServerRequest* request) {
         return;
     }
 
-    directPumpOff();
+    manualPortionsStop();   // finishes the running portion, clears the queue
 
     JsonDocument json;
     json["success"] = true;

@@ -46,8 +46,8 @@ struct ReservoirConfig {
     uint16_t sensor_to_bottom_mm;   // sensor face → reservoir bottom
     uint16_t marker_level_mm;       // marker (max water level) above the bottom
     uint8_t  marker_tol_mm;         // unused (refill check removed), kept for the FRAM layout
-    uint8_t  portion_pause_s;       // pause between manual portions (planned; not in the GUI,
-                                    // the calibration uses the fixed CAL_PAUSE_MS)
+    uint8_t  portion_pause_s;       // unused (manual portions use the fixed MANUAL_PORTION_PAUSE_MS,
+                                    // the calibration CAL_PAUSE_MS), kept for the FRAM layout
     uint8_t  flags;                 // unused (was: level sensor on/off), kept for the FRAM layout
     uint8_t  magic;                 // RESERVOIR_CONFIG_MAGIC = valid block
     PumpCalibration cal;            // not editable via setReservoirConfig

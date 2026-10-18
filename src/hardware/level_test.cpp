@@ -122,7 +122,8 @@ void updateLevelTest() {
     // series completed outside a pump run is a settled reading.
     bool pumping = isPumpActive();
     if (pumping && !g_wasPumping) {
-        if (isDirectPumpMode()) onPumpStart();   // uses the history before clearing it
+        // Only at the start of a manual session (it may hold several portions)
+        if (isDirectPumpMode() && !g_wasDirect) onPumpStart();   // uses the history before clearing it
         g_histCount = g_histNext = 0;
     }
     g_wasPumping = pumping;

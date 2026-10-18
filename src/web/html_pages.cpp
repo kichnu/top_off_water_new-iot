@@ -472,6 +472,15 @@ const char* DASHBOARD_HTML = R"rawliteral(
             .pump-controls { grid-template-columns: repeat(1, 1fr); }
 
         }
+        /* Manual dosing: ON adds a portion, OFF finishes the running one */
+        .manual-pump {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 6px;
+        }
+
+        .manual-pump #manualOffBtn { padding: 10px 14px; }
+
         .btn-service {
             background: rgba(249,115,22,0.10); border: 1px solid rgba(249,115,22,0.35);
             color: #f97316;
@@ -1016,7 +1025,10 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
             <div class="pump-controls">
                 <button id="systemToggleBtn" class="btn btn-service" onclick="toggleSystem()">Service Mode</button>
-                <button id="manualPumpBtn" class="btn btn-off" onclick="toggleManualPump()">Pump OFF</button>
+                <div class="manual-pump">
+                    <button id="manualPumpBtn" class="btn btn-off" onclick="manualPumpOn()" title="Each press adds one portion">Pump ON</button>
+                    <button id="manualOffBtn" class="btn btn-off" onclick="manualPumpOff()" disabled title="Finish the running portion, drop the rest">OFF</button>
+                </div>
                 <button id="systemResetBtn" class="btn btn-control" onclick="systemReset()">Cycle Reset</button>
             </div>
         </div>
@@ -1202,8 +1214,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             // Stop all polling intervals
             pollingIntervals.forEach(id => clearInterval(id));
             pollingIntervals = [];
-            if (pumpCountdownTimer) { clearInterval(pumpCountdownTimer); pumpCountdownTimer = null; }
-
             // Show overlay
             const overlay = document.createElement('div');
             overlay.innerHTML = `
@@ -1258,11 +1268,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
         // ============================================
         let systemEnabled = true;
         let maxDailyVolume = 2000;
-
-        // Manual pump countdown state
-        var pumpCountdownTimer = null;
-        var pumpOnTimeMs = 0;
-        var MANUAL_PUMP_DURATION_S = 60;
 
         // ============================================
         // SYSTEM TOGGLE (Auto Mode / Service Mode)
@@ -1339,59 +1344,36 @@ const char* DASHBOARD_HTML = R"rawliteral(
         }
 
         // ============================================
-        // MANUAL PUMP (bistable + 60s countdown)
+        // MANUAL DOSING IN PORTIONS (ON = +1 portion, OFF = finish the running one)
         // ============================================
-        function toggleManualPump() {
-            var btn = document.getElementById("manualPumpBtn");
-            var isOn = btn.classList.contains("btn-primary");
-            btn.disabled = true;
-            if (isOn) {
-                fetch("api/pump/direct-off", { method: "POST" })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) { if (data.success) updatePumpButton(false); btn.disabled = false; })
-                    .catch(function(e) { console.error("Pump stop error:", e); btn.disabled = false; });
-            } else {
-                fetch("api/pump/direct-on", { method: "POST" })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        if (data.success) { pumpOnTimeMs = Date.now(); updatePumpButton(true); startPumpCountdown(); }
-                        else console.error("Failed to start pump");
-                        btn.disabled = false;
-                    })
-                    .catch(function(e) { console.error("Pump start error:", e); btn.disabled = false; });
-            }
+        function manualPumpPost(url) {
+            return fetch(url, { method: "POST" })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.success) alert(data.error || "Pump command failed");
+                    updateStatus();
+                })
+                .catch(function(e) { console.error("Manual pump error:", e); });
         }
 
-        function startPumpCountdown() {
-            if (pumpCountdownTimer) clearInterval(pumpCountdownTimer);
-            pumpCountdownTimer = setInterval(function() {
-                var elapsed = Math.floor((Date.now() - pumpOnTimeMs) / 1000);
-                var remaining = MANUAL_PUMP_DURATION_S - elapsed;
-                var btn = document.getElementById("manualPumpBtn");
-                if (!btn || !btn.classList.contains("btn-primary")) {
-                    clearInterval(pumpCountdownTimer); pumpCountdownTimer = null; return;
-                }
-                if (remaining <= 0) {
-                    clearInterval(pumpCountdownTimer); pumpCountdownTimer = null; return;
-                }
-                btn.textContent = "Pump ON " + remaining + "s";
-            }, 1000);
-        }
+        function manualPumpOn()  { manualPumpPost("api/pump/direct-on"); }
+        function manualPumpOff() { manualPumpPost("api/pump/direct-off"); }
 
-        function updatePumpButton(isOn) {
+        function updatePumpButton(d) {
             var btn = document.getElementById("manualPumpBtn");
-            if (!btn) return;
-            if (isOn) {
-                if (!pumpOnTimeMs) pumpOnTimeMs = Date.now();
-                if (!pumpCountdownTimer) startPumpCountdown();
-                var remaining = Math.max(0, MANUAL_PUMP_DURATION_S - Math.floor((Date.now() - pumpOnTimeMs) / 1000));
-                btn.textContent = "Pump ON " + remaining + "s";
+            var off = document.getElementById("manualOffBtn");
+            if (!btn || !off) return;
+            if (d.direct_pump_mode) {
+                var total = d.manual_done + d.manual_left;
+                btn.textContent = d.manual_pause
+                    ? "Pause " + d.manual_done + "/" + total
+                    : "Portion " + (d.manual_done + 1) + "/" + total;
                 btn.className = "btn btn-primary";
+                off.disabled = false;
             } else {
-                btn.textContent = "Pump OFF";
+                btn.textContent = "Pump ON";
                 btn.className = "btn btn-off";
-                if (pumpCountdownTimer) { clearInterval(pumpCountdownTimer); pumpCountdownTimer = null; }
-                pumpOnTimeMs = 0;
+                off.disabled = true;
             }
         }
 
@@ -1680,7 +1662,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     }
 
                     // Sync manual pump button with actual pump state
-                    updatePumpButton(data.pump_active);
+                    updatePumpButton(data);
 
                     // WiFi status
                     const wifiItem = document.getElementById("wifiItem");

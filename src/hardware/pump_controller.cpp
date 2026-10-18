@@ -3,6 +3,8 @@
 #include "../config/config.h"
 #include "../hardware/rtc_controller.h"
 #include "../core/logging.h"
+#include "pump_calibration.h"
+#include "reserve_controller.h"
 #include <esp_timer.h>
 #include <math.h>
 
@@ -13,9 +15,15 @@ unsigned long pumpDuration = 0;
 String currentActionType = "";
 
 static bool     directPumpMode          = false;
-static uint16_t lastDirectPumpVolumeMl  = 0;
 static uint32_t lastDirectPumpRunMs     = 0;
 static uint32_t lastPumpRunMs           = 0;
+
+// Manual portion queue (directPumpMode session)
+static uint8_t  g_manualLeft     = 0;      // portions left, including the running one
+static uint8_t  g_manualDone     = 0;
+static bool     g_manualPause    = false;
+static uint32_t g_pauseStartMs   = 0;
+static uint32_t g_sessionRunMs   = 0;
 
 // One-shot timer that cuts the relay at the exact end of a timed run;
 // bookkeeping follows in updatePumpController()
@@ -37,6 +45,43 @@ static void armStopTimer(uint32_t durationMs) {
 
 static uint16_t directVolumeMl(uint32_t runMs) {
     return (uint16_t)lroundf(runMs * currentPumpSettings.volumePerSecond / 1000.0f);
+}
+
+static void startManualPortion() {
+    digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_ON);
+    pumpRunning       = true;
+    pumpStartTime     = millis();
+    pumpDuration      = getPortionMs();
+    currentActionType = "MANUAL_PORTION";
+    armStopTimer(pumpDuration);
+
+    LOG_INFO("");
+    LOG_INFO("Manual portion %u started (%.1f s, %u left after it)",
+             g_manualDone + 1, pumpDuration / 1000.0f, g_manualLeft - 1);
+}
+
+static void endManualSession(const char* reason) {
+    LOG_INFO("Manual dosing finished (%s): %u portion(s), %.1f s, ~%u ml",
+             reason, g_manualDone, g_sessionRunMs / 1000.0f, directVolumeMl(g_sessionRunMs));
+    lastDirectPumpRunMs = g_sessionRunMs;
+    directPumpMode = false;
+    g_manualLeft   = 0;
+    g_manualPause  = false;
+}
+
+// Bookkeeping after a manual portion ended (timer or forced stop)
+static void onManualPortionEnd(bool forced) {
+    g_sessionRunMs += lastPumpRunMs;
+    g_manualDone++;
+    if (g_manualLeft > 0) g_manualLeft--;
+    if (forced) {
+        endManualSession("stopped");
+    } else if (g_manualLeft > 0) {
+        g_manualPause  = true;
+        g_pauseStartMs = millis();
+    } else {
+        endManualSession("queue done");
+    }
 }
 
 void initPumpController() {
@@ -71,6 +116,18 @@ void updatePumpController() {
         return;
     }
 
+    // Pause between manual portions — the next one starts only if there is water
+    if (directPumpMode && g_manualPause && millis() - g_pauseStartMs >= MANUAL_PORTION_PAUSE_MS) {
+        g_manualPause = false;
+        if (isReserveEmpty()) {
+            LOG_WARNING("Manual dosing: reservoir empty — remaining portions dropped");
+            endManualSession("reservoir empty");
+        } else {
+            startManualPortion();
+        }
+        return;
+    }
+
     if (pumpRunning && (g_timerFired || millis() - pumpStartTime >= pumpDuration)) {
         // Relay already cut by the timer; the millis() check is only a fallback
         digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_OFF);
@@ -81,15 +138,8 @@ void updatePumpController() {
         LOG_INFO("");
         LOG_INFO("Pump stopped after %.1f s (%s)", lastPumpRunMs / 1000.0f, currentActionType.c_str());
 
-        if (directPumpMode) {
-            directPumpMode = false;
-            lastDirectPumpRunMs    = lastPumpRunMs;
-            lastDirectPumpVolumeMl = directVolumeMl(lastPumpRunMs);
-            LOG_INFO("");
-            LOG_INFO("Direct pump safety timeout reached - pump stopped, ~%u ml", lastDirectPumpVolumeMl);
-        }
-
         currentActionType = "";
+        if (directPumpMode) onManualPortionEnd(false);
     }
 }
 
@@ -146,58 +196,46 @@ void stopPump() {
         LOG_INFO("");
         LOG_INFO("Pump manually stopped after %.1f s (%s)", lastPumpRunMs / 1000.0f, currentActionType.c_str());
 
-        if (directPumpMode) {
-            directPumpMode = false;
-            lastDirectPumpRunMs = lastPumpRunMs;
-            LOG_INFO("Direct pump stopped via stopPump()");
-        }
-
         currentActionType = "";
+        if (directPumpMode) onManualPortionEnd(true);
+    } else if (directPumpMode) {
+        endManualSession("stopped in pause");   // between portions — nothing running
     }
 }
 
-bool directPumpOn(uint16_t durationSeconds) {
+bool manualPortionAdd() {
     if (pumpRunning && !directPumpMode) {
-        LOG_WARNING("directPumpOn blocked — algorithm pump is running");
+        LOG_WARNING("Manual portion blocked — algorithm/calibration pump is running");
         return false;
     }
-    if (pumpRunning && directPumpMode) {
-        // Already running in direct mode — ignore
+    if (!directPumpMode) {
+        directPumpMode = true;
+        g_manualLeft   = 1;
+        g_manualDone   = 0;
+        g_manualPause  = false;
+        g_sessionRunMs = 0;
+        startManualPortion();
         return true;
     }
-
-    directPumpMode = true;
-    digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_ON);
-    pumpRunning = true;
-    pumpStartTime = millis();
-    pumpDuration = durationSeconds * 1000UL;
-    currentActionType = "DIRECT_MANUAL";
-    armStopTimer(pumpDuration);
-
-    LOG_INFO("");
-    LOG_INFO("Direct pump ON for %d seconds", durationSeconds);
+    if (g_manualLeft >= MANUAL_QUEUE_MAX) return false;
+    g_manualLeft++;
+    LOG_INFO("Manual portion queued (%u left)", g_manualLeft);
     return true;
 }
 
-void directPumpOff() {
-    if (!pumpRunning || !directPumpMode) {
-        return;
+void manualPortionsStop() {
+    if (!directPumpMode) return;
+    if (pumpRunning) {
+        g_manualLeft = 1;   // finish the running portion, drop the rest
+        LOG_INFO("Manual dosing: OFF — finishing the running portion");
+    } else {
+        endManualSession("OFF in pause");
     }
-
-    esp_timer_stop(g_stopTimer);
-    digitalWrite(ATO_PUMP_RELAY_PIN, PUMP_RELAY_OFF);
-    lastPumpRunMs           = g_timerFired ? g_timerRunMs : (uint32_t)(millis() - pumpStartTime);
-    g_timerFired            = false;
-    lastDirectPumpRunMs     = lastPumpRunMs;
-    lastDirectPumpVolumeMl  = directVolumeMl(lastPumpRunMs);
-
-    pumpRunning    = false;
-    directPumpMode = false;
-    currentActionType = "";
-
-    LOG_INFO("");
-    LOG_INFO("Direct pump stopped after %.1f s, ~%d ml", lastPumpRunMs / 1000.0f, lastDirectPumpVolumeMl);
 }
+
+bool    isManualPause()          { return directPumpMode && g_manualPause; }
+uint8_t getManualPortionsLeft()  { return directPumpMode ? g_manualLeft : 0; }
+uint8_t getManualPortionsDone()  { return g_manualDone; }
 
 uint32_t getLastDirectPumpRunMs() {
     return lastDirectPumpRunMs;

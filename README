@@ -73,6 +73,16 @@ Direct/manual pump control bypasses this state machine entirely (separate
 code path in pump_controller, ignores system-disable and daily limit).
 ```
 
+### Manual Dosing in Portions
+
+System Control → **Pump ON** / **OFF** (`/api/pump/direct-on`, `/api/pump/direct-off`):
+
+- Each ON press adds one portion to the queue (max `MANUAL_QUEUE_MAX` = 20); the first press starts pumping at once. A portion lasts the calibrated portion time (`getPortionMs()`).
+- Portions are separated by a fixed 5 s pause (`MANUAL_PORTION_PAUSE_MS`) — it only marks the portion-wise pumping.
+- OFF finishes the running portion and drops the rest of the queue; OFF during a pause ends the session at once. Emergency stop (`/api/pump/stop`) cuts the running portion immediately.
+- Manual portions bypass the algorithm, Service Mode and the daily limit; they are not counted in the 24 h volume and not logged in the cycle history (they would distort the EMA).
+- Start is blocked when the reservoir is empty (float switch) or a pump calibration is running; a new portion from the queue does not start once the float reports no water (a running one finishes). While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
+
 ### EMA / Alarm Score
 
 After each cycle:
@@ -168,8 +178,8 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/pump/direct-on` | Manual ATO pump on, bypasses algorithm (`mode=monostable` → runs for the 120s safety timeout; default bistable → runs for `manualCycleSeconds`) |
-| POST | `/api/pump/direct-off` | Stop manual ATO pump |
+| POST | `/api/pump/direct-on` | Manual dosing: add one portion to the queue (starts at once when idle); returns `portions_left` |
+| POST | `/api/pump/direct-off` | Manual dosing: finish the running portion, drop the queue |
 | POST | `/api/pump/calibration` | Guided portion calibration: `action=start&dose_ml=N`, `run`, `stop`, `confirm`, `cancel`; progress/result in `/api/status` (`cal_*`) |
 | POST | `/api/pump/stop` | Emergency stop |
 | GET | `/api/pump-settings` | `volume_per_second` (derived from the calibration, used to estimate direct runs) |

@@ -15,14 +15,21 @@ void stopPump();
 // Exact run time (ms) of the last finished run of any kind (not reset on read)
 uint32_t getLastPumpRunMs();
 
-// Direct pump control — bypasses algorithm, system disable and daily limit
-bool directPumpOn(uint16_t durationSeconds);
-void directPumpOff();
-bool isDirectPumpMode();
+// Manual dosing in portions — bypasses algorithm, system disable and daily limit,
+// not logged in the cycle history. Each ON adds one portion (getPortionMs()) to the
+// queue; portions are separated by a short pause. OFF finishes the running portion
+// and clears the queue. A new portion does not start when the reservoir is empty.
+#define MANUAL_PORTION_PAUSE_MS  5000
+#define MANUAL_QUEUE_MAX         20
 
-// Returns the volume of the last direct pump session and resets the counter (0 = no new session)
+bool manualPortionAdd();          // false: algorithm/calibration pump running or queue full
+void manualPortionsStop();
+bool isDirectPumpMode();          // true for the whole manual session (portions + pauses)
+bool isManualPause();
+uint8_t getManualPortionsLeft();  // including the running one
+uint8_t getManualPortionsDone();  // finished in the current session
 
-// Exact run time (ms) of the last finished direct pump session (not reset on read)
+// Total run time (ms) of the last finished manual session (not reset on read)
 uint32_t getLastDirectPumpRunMs();
 
 #endif

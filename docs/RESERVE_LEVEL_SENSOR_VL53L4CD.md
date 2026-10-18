@@ -56,7 +56,7 @@ zakres rezerwy, ukryte dno. Walidacja z parametrami czujnika (zasięg 1200 mm, p
 ostrzeżenie o stożku szerszym niż zbiornik).
 
 Usunięte z GUI/API (pola w FRAM zostają dla układu): tolerancja przy znaczniku, przerwa między
-porcjami (`portion_pause_s` — wróci przy dolewce ręcznej porcjami), przełącznik „czujnik
+porcjami (`portion_pause_s` — nieużywane, dolewka ręczna ma stałą przerwę 5 s), przełącznik „czujnik
 poziomu” (bajt `flags`).
 
 ## 5. Kalibracja pompy porcjami (wdrożone 2026-10-17, v5)
@@ -79,11 +79,22 @@ bez automatycznego powrotu do Auto.
 - Przebieg > 300 s albo zatrzymanie pompy spoza kalibracji → przerwanie procedury.
 - Bez kalibracji dla bieżącej porcji algorytm liczy z ml/s (ostrzeżenie „NOT calibrated”).
 
-## 6. Dolewka ręczna porcjami (planowane, bez zmian)
+## 6. Dolewka ręczna porcjami (wdrożone 2026-10-18)
 
-ON (monostabilny) dodaje porcję do kolejki, OFF dokańcza bieżącą i zeruje kolejkę; przerwa
-między porcjami z `portion_pause_s` (pole wróci do Settings). Kolejka max 20, przerywana przez
-pływak (brak wody).
+- Przyciski System Control: Pump ON / OFF (zastępują pompę ciągłą 60 s i tryb monostabilny).
+- Każde ON dodaje porcję do kolejki (max 20, `MANUAL_QUEUE_MAX`); pierwsze ON startuje od razu.
+  Czas porcji = portion time z kalibracji (`getPortionMs()`).
+- Między porcjami stała przerwa 5 s (`MANUAL_PORTION_PAUSE_MS`) — tylko zaakcentowanie
+  pompowania porcjami; `portion_pause_s` z FRAM nieużywane.
+- OFF dokańcza bieżącą porcję i zeruje kolejkę; OFF w przerwie kończy od razu. Emergency stop
+  (`/api/pump/stop`) przerywa porcję natychmiast.
+- Blokady startu bez zmian: pusta rezerwa (`isReserveEmpty`) i trwająca kalibracja. Pływak jak
+  dotąd: nowa porcja z kolejki nie startuje, rozpoczęta się kończy.
+- Porcje ręczne omijają algorytm, Service Mode i limit dobowy; nie liczą się do „Added in 24h”
+  i nie trafiają do historii cykli (zaburzałyby EMA).
+- W trakcie sesji (porcje + przerwy) cykl ATO jest odkładany, kalibracja nie startuje.
+- GUI: „Portion 2/5” / „Pause 2/5”; `/api/status`: `direct_pump_mode`, `manual_left`
+  (z bieżącą), `manual_done`, `manual_pause`.
 
 ## 7. Monitor poziomu (ATO Process Monitor) — wdrożone v5
 
@@ -125,7 +136,6 @@ ATO. Zakres rezerwy z czujnika — bez buzzera.
 ## 12. Później (świadomie odłożone)
 
 - Włączenie pływaka (patrz przypomnienia na górze).
-- Dolewka ręczna porcjami (sekcja 6).
 - Wyświetlacz OLED (`docs/DISPLAY_OLED_091.md`) — dane z GUI (rezerwa, stan pływaka).
 - Ewentualnie lepszy cel dla czujnika (nieprzezroczysty matowy pływak w kominie) — jeśli
   kiedyś czujnik miałby wrócić do kontroli dawek.

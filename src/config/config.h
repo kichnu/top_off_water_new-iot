@@ -38,9 +38,6 @@ extern unsigned long pumpDisabledTime;
 extern const unsigned long PUMP_AUTO_ENABLE_MS;
 
 
-// Direct manual pump safety timeout (monostable mode)
-#define DIRECT_PUMP_SAFETY_TIMEOUT_S 120
-
 // ATO calibration safety timeout — pump stops automatically after 1h if user forgets
 
 // Stałe mogą być tutaj

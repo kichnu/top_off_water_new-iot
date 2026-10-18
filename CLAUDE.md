@@ -149,8 +149,8 @@ System:
 - `POST /api/system-reset` — reset ATO state machine
 
 ATO pump:
-- `POST /api/pump/direct-on` — manual pump on (bypass algorithm)
-- `POST /api/pump/direct-off` — manual pump off
+- `POST /api/pump/direct-on` — manual dosing: +1 portion to the queue (max 20, 5 s pause between portions)
+- `POST /api/pump/direct-off` — manual dosing: finish the running portion, clear the queue
 - `POST /api/pump/stop` — emergency stop
 - `GET  /api/pump-settings` — `volume_per_second` (derived from the calibration)
 - `POST /api/pump/calibration` — guided portion calibration (`start&dose_ml`, `run`, `stop`, `confirm`, `cancel`); the only way to change dose_ml

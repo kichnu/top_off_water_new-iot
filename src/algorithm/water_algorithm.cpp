@@ -248,7 +248,7 @@ void WaterAlgorithm::startAutoPump() {
     LOG_INFO("AUTO PUMP START");
     LOG_INFO("  dose_ml      : %d ml", config.dose_ml);
     LOG_INFO("  flow_rate    : %.2f ml/s", currentPumpSettings.volumePerSecond);
-    LOG_INFO("  dose_time    : %lu ms (%s)", doseTimeMs, isPumpCalibrated() ? "calibrated" : "NOT calibrated, ml/s");
+    LOG_INFO("  dose_time    : %lu ms (%s)", doseTimeMs, isPumpCalibrated() ? "calibrated" : "NOT calibrated, default");
     LOG_INFO("  rolling_24h  : %d / %d ml", rolling24hVolumeMl, config.daily_limit_ml);
     LOG_INFO("  ema_rate     : %.1f ml/h", ema.ema_rate_ml_h);
     LOG_INFO("  alarm_score  : %.2f (green<%.1f yellow<%.1f)",

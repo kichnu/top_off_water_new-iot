@@ -1428,15 +1428,12 @@ const char* DASHBOARD_HTML = R"rawliteral(
         function updateCalibration(d) {
             const sum = document.getElementById('calSummary');
             const dose = d.res_dose_ml;
-            let t = 'Single Dose ' + dose + ' ml \u2022 portion time ' + fmtS(d.cal_portion_ms);
-            if (d.cal_calibrated) {
-                t += ' (calibrated ' + (d.cal_ts ? new Date(d.cal_ts * 1000).toLocaleDateString() : '?') + ')';
-                sum.style.color = '';
-            } else {
-                t += ' \u2014 NOT calibrated (ml/s estimate), calibrate the pump';
-                sum.style.color = 'var(--accent-yellow)';
-            }
-            sum.textContent = t;
+            sum.textContent = 'Single Dose ' + dose + ' ml \u2022 portion time ' + fmtS(d.cal_portion_ms);
+            const st = document.createElement('div');
+            st.style.marginTop = '3px';
+            st.style.color = d.cal_calibrated ? 'var(--accent-green)' : 'var(--accent-yellow)';
+            st.textContent = d.cal_calibrated ? 'Pump calibrated' : 'Calibrate the pump';
+            sum.appendChild(st);
 
             const box = document.getElementById('calBox');
             const openBtn = document.getElementById('calOpenBtn');

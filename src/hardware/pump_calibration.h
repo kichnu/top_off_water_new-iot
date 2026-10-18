@@ -19,6 +19,7 @@
 #define CAL_SPREAD_WARN_PCT    20     // max − min above this % of the mean → hint to repeat
 #define CAL_DOSE_MIN_ML         1
 #define CAL_DOSE_MAX_ML      2000
+#define DEFAULT_PORTION_MS   5000UL   // uncalibrated pump — short and safe until calibrated
 
 enum CalPhase : uint8_t {
     CAL_IDLE      = 0,
@@ -54,7 +55,7 @@ void updatePumpCalibration();
 const CalStatus& getCalStatus();
 bool isPumpCalibrationActive();
 
-// Portion time for the current Single Dose ml — calibrated, or ml/s fallback
+// Portion time for the current Single Dose ml — calibrated, or DEFAULT_PORTION_MS
 uint32_t getPortionMs();
 bool     isPumpCalibrated();   // calibration exists for the current dose
 

@@ -189,9 +189,7 @@ bool isPumpCalibrated() {
 
 uint32_t getPortionMs() {
     if (isPumpCalibrated()) return getReservoirConfig().cal.portion_ms;
-    // Not calibrated — ml/s model (inaccurate: start-up and hose drain not included)
-    float vps = currentPumpSettings.volumePerSecond;
-    if (vps <= 0.01f) return 60000;
-    uint32_t ms = (uint32_t)lroundf(waterAlgorithm.getConfig().dose_ml * 1000.0f / vps);
-    return ms < 100 ? 100 : ms;
+    // Not calibrated (new hardware, or the portion changed) — a stored ml/s value may
+    // be missing or stale, so use a short fixed run instead
+    return DEFAULT_PORTION_MS;
 }

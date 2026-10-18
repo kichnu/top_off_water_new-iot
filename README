@@ -103,7 +103,7 @@ The pump is calibrated in its working point: the portion (`dose_ml`) is pumped a
 3. Runs 2–4 are started by the user after a fixed 20 s pause (the hose drains back, the vessel is emptied — not back into the reservoir).
 4. Right after run 4 the result is shown: mean, min/max and sd of the run times (a hint when max − min exceeds 20% of the mean). Save stores the mean as the portion time, the portion, and the derived `volume_per_second` (used only to estimate direct pump runs); Reject leaves everything unchanged.
 
-No level measurement during the calibration. The pump end is cut by a one-shot `esp_timer`, so the run time is exact to the ms and does not depend on the loop() period. Without a calibration for the current portion, the ATO falls back to `dose_ml / volume_per_second` and the GUI shows "NOT calibrated".
+No level measurement during the calibration. The pump end is cut by a one-shot `esp_timer`, so the run time is exact to the ms and does not depend on the loop() period. Without a calibration for the current portion (new hardware, or a stored calibration for another portion) the portion time is a fixed `DEFAULT_PORTION_MS` = 5 s — short and safe — and the GUI shows "Calibrate the pump" (yellow); after the calibration it shows "Pump calibrated" (green).
 
 ## Reserve (Source Water) Monitoring
 

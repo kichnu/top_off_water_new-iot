@@ -77,7 +77,11 @@ bez automatycznego powrotu do Auto.
   przy pełnym vs prawie pustym zbiorniku (słup wody).
 - Warunek startu: pływak nie zgłasza braku wody; jeśli czujnik ma odczyt — szacunek ≥ 4 + 1 porcji.
 - Przebieg > 300 s albo zatrzymanie pompy spoza kalibracji → przerwanie procedury.
-- Bez kalibracji dla bieżącej porcji algorytm liczy z ml/s (ostrzeżenie „NOT calibrated”).
+- Bez kalibracji dla bieżącej porcji (nowy sprzęt albo kalibracja innej porcji) czas porcji =
+  stałe 5 s (`DEFAULT_PORTION_MS`) — krótko i bezpiecznie; zapisane ml/s może nie istnieć
+  (domyślne 1 ml/s dałoby 250 s dla 250 ml) albo być nieaktualne. GUI: żółte „Calibrate the
+  pump”; po kalibracji zielone „Pump calibrated”, a linia „Single Dose … • portion time …” w
+  zwykłym kolorze tekstu.
 
 ## 6. Dolewka ręczna porcjami (wdrożone 2026-10-18)
 

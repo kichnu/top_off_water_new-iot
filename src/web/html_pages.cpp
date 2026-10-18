@@ -1670,7 +1670,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     const rtcItem = document.getElementById("rtcItem");
                     const rtcTime = document.getElementById("rtcTime");
                     const rtcHint = document.getElementById("rtcHint");
-                    rtcTime.textContent = data.rtc_time || "Error";
+                    // Time only — rtc_time is "YYYY-MM-DD HH:MM:SS"
+                    rtcTime.textContent = data.rtc_time ? data.rtc_time.split(" ").pop() : "Error";
                     if (data.rtc_battery_issue || data.rtc_needs_sync) {
                         rtcItem.className = "status-info rtc-warn";
                         rtcHint.textContent = " ⚠ Battery";

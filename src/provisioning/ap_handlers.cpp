@@ -4,7 +4,6 @@
 #include "../crypto/fram_encryption.h"
 #include "../hardware/fram_controller.h"
 #include "../hardware/fram_constants.h"
-#include "../algorithm/algorithm_config.h"
 #include <stddef.h>
 
 // ── Helper: build FRAMCredentials with optional partial update ────────────────
@@ -86,13 +85,8 @@ void handleProvConfig(AsyncWebServerRequest *request) {
     FRAMCredentials existingFram;
     bool hasExisting = readCredentialsFromFRAM(existingFram);
 
-    TopOffConfig algCfg;
-    bool hasCfg = loadTopOffConfigFromFRAM(algCfg) &&
-                  algCfg.is_configured == TOPOFF_CONFIG_MAGIC;
-
     JsonDocument doc;
     doc["device_name"]   = hasExisting ? String(existingFram.device_name) : "";
-    doc["ema_alpha"]     = hasCfg ? (double)algCfg.ema_alpha : (double)DEFAULT_EMA_ALPHA;
     doc["is_configured"] = hasExisting;
 
     String response;
@@ -110,7 +104,6 @@ void handleConfigureSubmit(AsyncWebServerRequest *request, JsonVariant &json) {
     String wifiSSID      = obj["wifi_ssid"]      | "";
     String wifiPassword  = obj["wifi_password"]  | "";
     String adminPassword = obj["admin_password"] | "";
-    float  emaAlpha      = obj["ema_alpha"]      | (float)DEFAULT_EMA_ALPHA;
 
     // Helper: send error response
     auto sendError = [&](int code, const String& msg, const String& field = "") {
@@ -125,10 +118,6 @@ void handleConfigureSubmit(AsyncWebServerRequest *request, JsonVariant &json) {
     // --- Validate credentials ------------------------------------------------
     ValidationResult v = prov_validateAllCredentials(deviceName, wifiSSID, wifiPassword, adminPassword);
     if (!v.valid) { sendError(400, v.errorMessage, v.errorField); return; }
-
-    if (emaAlpha < 0.05f || emaAlpha > 0.50f) {
-        sendError(400, "EMA alpha must be 0.05 – 0.50", "ema_alpha"); return;
-    }
 
     // --- Read existing FRAM --------------------------------------------------
     FRAMCredentials existingFram;
@@ -160,22 +149,6 @@ void handleConfigureSubmit(AsyncWebServerRequest *request, JsonVariant &json) {
     }
 
     LOG_INFO("Credentials saved OK for device: %s", deviceName.c_str());
-
-    // --- Save algorithm config to FRAM ---------------------------------------
-    TopOffConfig algCfg;
-    bool hasCfg = loadTopOffConfigFromFRAM(algCfg) &&
-                  algCfg.is_configured == TOPOFF_CONFIG_MAGIC;
-
-    if (!hasCfg) {
-        algCfg.dose_ml          = DEFAULT_DOSE_ML;
-        algCfg.daily_limit_ml   = DEFAULT_DAILY_LIMIT_ML;
-        algCfg.history_window_s = DEFAULT_HISTORY_WINDOW_S;
-    }
-    algCfg.ema_alpha     = emaAlpha;
-    algCfg.is_configured = TOPOFF_CONFIG_MAGIC;
-
-    saveTopOffConfigToFRAM(algCfg);
-    LOG_INFO("Algorithm config saved: alpha=%.2f", emaAlpha);
 
     // --- Success -------------------------------------------------------------
     JsonDocument respDoc;

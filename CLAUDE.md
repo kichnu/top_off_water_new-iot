@@ -162,7 +162,7 @@ History/volumes:
 - `POST /api/reset-daily-volume`
 - `GET  /api/fill-water-max` — daily_limit_ml and dose_ml
 - `POST /api/set-fill-water-max` — set daily_limit_ml
-- `GET|POST /api/alg-config` — EMA/alarm-score parameters
+- `GET|POST /api/alg-config` — alarm-score zones and initial EMA (EMA alpha/clamp, P1/P2 are constants)
 - `GET|POST /api/reserve-config` — reservoir geometry (length, width, sensor → bottom, marker level)
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 

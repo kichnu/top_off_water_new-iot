@@ -29,10 +29,7 @@ WaterAlgorithm::WaterAlgorithm() {
 
     config.dose_ml           = DEFAULT_DOSE_ML;
     config.daily_limit_ml    = DEFAULT_DAILY_LIMIT_ML;
-    config.ema_alpha         = DEFAULT_EMA_ALPHA;
-    config.ema_clamp         = DEFAULT_EMA_CLAMP;
-    config.alarm_p1          = DEFAULT_ALARM_P1;
-    config.alarm_p2          = DEFAULT_ALARM_P2;
+    memset(config._reserved, 0, sizeof(config._reserved));
     config.zone_green        = DEFAULT_ZONE_GREEN;
     config.zone_yellow       = DEFAULT_ZONE_YELLOW;
     config.initial_ema       = DEFAULT_INITIAL_EMA;
@@ -109,10 +106,6 @@ void WaterAlgorithm::initFromFRAM() {
     LOG_INFO("WaterAlgorithm: initFromFRAM done");
     LOG_INFO("  dose_ml        : %d ml", config.dose_ml);
     LOG_INFO("  daily_limit_ml : %d ml", config.daily_limit_ml);
-    LOG_INFO("  ema_alpha      : %.2f", config.ema_alpha);
-    LOG_INFO("  ema_clamp      : %.2f", config.ema_clamp);
-    LOG_INFO("  alarm_p1       : %.3f", config.alarm_p1);
-    LOG_INFO("  alarm_p2       : %.3f", config.alarm_p2);
     LOG_INFO("  zone_green     : %.1f", config.zone_green);
     LOG_INFO("  zone_yellow    : %.1f", config.zone_yellow);
     LOG_INFO("  initial_ema    : %.2f", config.initial_ema);
@@ -362,10 +355,10 @@ void WaterAlgorithm::finishPumpCycle() {
 // ============================================================
 
 void WaterAlgorithm::updateEMA(uint32_t intervalS, float rateMlH) {
-    float alpha = config.ema_alpha;
-    float clamp = config.ema_clamp;
-    float p1    = config.alarm_p1;
-    float p2    = config.alarm_p2;
+    const float alpha = EMA_ALPHA;
+    const float clamp = EMA_CLAMP;
+    const float p1    = ALARM_P1;
+    const float p2    = ALARM_P2;
 
     // Seed EMA przy pierwszej dolewce z rate
     if (ema.ema_rate_ml_h < 0.01f) {
@@ -462,11 +455,10 @@ void WaterAlgorithm::setConfig(const TopOffConfig& cfg) {
     saveTopOffConfigToFRAM(config);
     framBusy = false;
 
-    LOG_INFO("Config updated: dose=%d ml, daily_limit=%d ml, alpha=%.2f, clamp=%.2f",
-             config.dose_ml, config.daily_limit_ml, config.ema_alpha, config.ema_clamp);
-    LOG_INFO("  p1=%.3f p2=%.3f zone_green=%.1f zone_yellow=%.1f initial_ema=%.2f",
-             config.alarm_p1, config.alarm_p2, config.zone_green, config.zone_yellow,
-             config.initial_ema);
+    LOG_INFO("Config updated: dose=%d ml, daily_limit=%d ml",
+             config.dose_ml, config.daily_limit_ml);
+    LOG_INFO("  zone_green=%.1f zone_yellow=%.1f initial_ema=%.2f",
+             config.zone_green, config.zone_yellow, config.initial_ema);
 }
 
 // ============================================================

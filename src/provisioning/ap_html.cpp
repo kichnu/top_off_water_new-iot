@@ -330,18 +330,6 @@ const char SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
                     <span class="error" id="admin_password_error">Password must be at least 8 characters</span>
                 </div>
 
-                <!-- Algorithm Settings -->
-                <hr style="margin: 24px 0 20px; border: none; border-top: 1px solid #eee;">
-                <p style="color: #888; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px;">Algorithm Settings</p>
-
-                <div class="form-group">
-                    <label for="ema_alpha">EMA Smoothing Factor</label>
-                    <input type="number" id="ema_alpha" name="ema_alpha"
-                           value="0.20" min="0.05" max="0.50" step="0.01">
-                    <small>0.05 = slow tracking / 0.50 = fast tracking. Default: 0.20</small>
-                    <span class="error">Must be 0.05 – 0.50</span>
-                </div>
-
                 <button type="submit" class="btn" id="submitBtn">
                     <span id="submitBtnText">Save Configuration</span>
                     <span class="spinner hidden" id="submitSpinner"></span>
@@ -483,7 +471,6 @@ const char SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
                 const r = await fetch('/api/prov/config');
                 const d = await r.json();
                 if (d.device_name) document.getElementById('device_name').value = d.device_name;
-                document.getElementById('ema_alpha').value = d.ema_alpha ?? 0.20;
 
                 if (!d.is_configured) {
                     // First-time setup — passwords required
@@ -516,8 +503,7 @@ const char SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
                 device_name:   document.getElementById('device_name').value,
                 wifi_ssid:     document.getElementById('wifi_ssid').value,
                 wifi_password: document.getElementById('wifi_password').value,
-                admin_password:document.getElementById('admin_password').value,
-                ema_alpha:     parseFloat(document.getElementById('ema_alpha').value)
+                admin_password:document.getElementById('admin_password').value
             };
 
             // Validate
@@ -554,12 +540,6 @@ const char SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
                 hasErrors = true;
             } else if (formData.admin_password.length > 0 && formData.admin_password.length < 8) {
                 adminPassEl.parentElement.classList.add('has-error');
-                hasErrors = true;
-            }
-
-            // EMA alpha
-            if (isNaN(formData.ema_alpha) || formData.ema_alpha < 0.05 || formData.ema_alpha > 0.50) {
-                document.getElementById('ema_alpha').parentElement.classList.add('has-error');
                 hasErrors = true;
             }
 

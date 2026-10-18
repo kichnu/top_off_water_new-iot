@@ -77,13 +77,13 @@ code path in pump_controller, ignores system-disable and daily limit).
 
 After each cycle:
 - **rate** [ml/h] = `dose_ml / interval_since_last_cycle × 3600`
-- **ema_rate_ml_h** — EMA of rate (`ema_alpha`, default 0.20, per-step deviation clamped to `ema_clamp`, default 0.40)
+- **ema_rate_ml_h** — EMA of rate (`EMA_ALPHA` 0.20, per-step deviation clamped to `EMA_CLAMP` 0.40)
 - **d** = `(rate - ema_rate) / ema_rate`
-- **alarm_score**: grows by `alarm_p1 × log2(1+d) × 100` when `d > 0`; decays by factor `alarm_p2` when `d <= 0` (persists across restarts)
+- **alarm_score**: grows by `ALARM_P1 × log2(1+d) × 100` when `d > 0` (`ALARM_P1` 0.10); decays by factor `ALARM_P2` (0.80) when `d <= 0` (persists across restarts)
 
 Zones: `score < zone_green` (default 20) → green, `< zone_yellow` (default 50) → yellow, else → red (triggers `STATE_ERROR`). No bootstrap gate — the score accumulates from the very first cycle. After a reset, the alarm is disarmed and only re-arms once the score drops back below `zone_yellow` (hysteresis, prevents immediate re-trip).
 
-All of the above (`ema_alpha`, `ema_clamp`, `alarm_p1`, `alarm_p2`, `zone_green`, `zone_yellow`, `initial_ema`) are runtime-configurable via `GET/POST /api/alg-config`.
+`EMA_ALPHA`, `EMA_CLAMP`, `ALARM_P1` and `ALARM_P2` are compile-time constants in `src/algorithm/algorithm_config.h` (fixed after field testing). `zone_green`, `zone_yellow` and `initial_ema` are runtime-configurable via `GET/POST /api/alg-config` (Settings → Algorithm Parameters).
 
 ## Pump Calibration
 
@@ -180,7 +180,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 |---|---|---|
 | GET | `/api/fill-water-max` | Get `dose_ml` and `daily_limit_ml` |
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
-| GET/POST | `/api/alg-config` | Get/set EMA + alarm-score parameters |
+| GET/POST | `/api/alg-config` | Get/set alarm-score zones and initial EMA |
 | GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`); returns derived `ml_per_mm`, `capacity_ml`, `usable_ml`, `low_ml`, `hidden_ml` |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |

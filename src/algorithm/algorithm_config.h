@@ -18,14 +18,18 @@
 // ============================================================
 #define DEFAULT_DOSE_ML             150     // Stała dawka wody na jeden cykl [ml]
 #define DEFAULT_DAILY_LIMIT_ML     2000     // Limit dobowy [ml]
-#define DEFAULT_EMA_ALPHA          0.20f    // Współczynnik wygładzania EMA [0.05–0.50]
-#define DEFAULT_EMA_CLAMP          0.40f    // Maks. odchylenie EMA na krok [0.10–0.80]
-#define DEFAULT_ALARM_P1           0.10f    // Waga skoku w alarm_score [0.01–2.0]
-#define DEFAULT_ALARM_P2           0.80f    // Prędkość zaniku score [0.05–0.99]
 #define DEFAULT_ZONE_GREEN         20.0f    // Próg score zielony/żółty
 #define DEFAULT_ZONE_YELLOW        50.0f    // Próg score żółty/czerwony
 #define DEFAULT_INITIAL_EMA        20.0f    // Seed EMA przed pierwszą dolewką [ml/h]
 #define DEFAULT_HISTORY_WINDOW_S  86400     // Okno historii [s] — 24h
+
+// ============================================================
+// EMA + ALARM SCORE CONSTANTS (fixed after field testing, not configurable)
+// ============================================================
+#define EMA_ALPHA                  0.20f    // EMA smoothing factor [0.05–0.50]
+#define EMA_CLAMP                  0.40f    // Max EMA deviation per step [0.10–0.80]
+#define ALARM_P1                   0.10f    // Spike weight in alarm_score [0.01–2.0]
+#define ALARM_P2                   0.80f    // Score decay speed [0.05–0.99]
 
 // ============================================================
 // SPRAWDZENIA INTEGRALNOŚCI STAŁYCH
@@ -36,6 +40,10 @@ static_assert(DEBOUNCE_COUNTER >= 2 && DEBOUNCE_COUNTER <= 20,
     "DEBOUNCE_COUNTER must be 2-20");
 static_assert(DEFAULT_DOSE_ML >= 50 && DEFAULT_DOSE_ML <= 2000,
     "DEFAULT_DOSE_ML must be 50-2000 ml");
+static_assert(EMA_ALPHA >= 0.05f && EMA_ALPHA <= 0.50f, "EMA_ALPHA must be 0.05-0.50");
+static_assert(EMA_CLAMP >= 0.10f && EMA_CLAMP <= 0.80f, "EMA_CLAMP must be 0.10-0.80");
+static_assert(ALARM_P1 >= 0.01f && ALARM_P1 <= 2.0f,    "ALARM_P1 must be 0.01-2.0");
+static_assert(ALARM_P2 >= 0.05f && ALARM_P2 <= 0.99f,   "ALARM_P2 must be 0.05-0.99");
 
 // ============================================================
 // STANY ALGORYTMU
@@ -94,13 +102,10 @@ static_assert(sizeof(EmaBlock) == 16, "EmaBlock must be exactly 16 bytes");
 // KONFIGURACJA ALGORYTMU — persystowana w FRAM, 40 bajtów
 // ============================================================
 struct TopOffConfig {
-    float    ema_alpha;           // Współczynnik EMA [0.05–0.50]
-    float    ema_clamp;           // Maks. odchylenie EMA na krok [0.10–0.80]
-    float    alarm_p1;            // Waga skoku (P1) [0.01–2.0]
-    float    alarm_p2;            // Prędkość zaniku (P2) [0.05–0.99]
-    float    zone_green;          // Próg score → zielony/żółty
-    float    zone_yellow;         // Próg score → żółty/czerwony
-    float    initial_ema;         // Seed EMA przy pierwszym starcie [ml/h]
+    float    _reserved[4];        // Formerly ema_alpha/ema_clamp/alarm_p1/alarm_p2 (now constants), keeps the FRAM layout
+    float    zone_green;          // Score threshold green/yellow
+    float    zone_yellow;         // Score threshold yellow/red
+    float    initial_ema;         // EMA seed on first start [ml/h]
     uint32_t history_window_s;    // Okno historii [s]
     uint16_t dose_ml;             // Stała dawka [ml]
     uint16_t daily_limit_ml;      // Limit dobowy [ml]

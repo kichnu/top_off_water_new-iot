@@ -988,8 +988,8 @@ bool saveTopOffConfigToFRAM(const TopOffConfig& cfg) {
     uint16_t chksum = calculateChecksum((uint8_t*)&cfg, sizeof(TopOffConfig));
     fram.write(FRAM_ADDR_TOPOFF_CFG_CHKSUM, (uint8_t*)&chksum, 2);
 
-    LOG_INFO("TopOffConfig saved: dose=%d ml daily=%d ml alpha=%.2f window=%lu",
-             cfg.dose_ml, cfg.daily_limit_ml, cfg.ema_alpha, cfg.history_window_s);
+    LOG_INFO("TopOffConfig saved: dose=%d ml daily=%d ml window=%lu",
+             cfg.dose_ml, cfg.daily_limit_ml, cfg.history_window_s);
     return true;
 }
 

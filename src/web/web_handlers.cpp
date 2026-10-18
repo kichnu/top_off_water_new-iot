@@ -582,9 +582,9 @@ void handleGetCycleHistory(AsyncWebServerRequest* request) {
     doc["bootstrap"]    = ema.bootstrap_count;
     doc["zone_green"]   = cfg.zone_green;
     doc["zone_yellow"]  = cfg.zone_yellow;
-    doc["alarm_p1"]     = cfg.alarm_p1;
-    doc["alarm_p2"]     = cfg.alarm_p2;
-    doc["ema_clamp"]    = cfg.ema_clamp;
+    doc["alarm_p1"]     = ALARM_P1;
+    doc["alarm_p2"]     = ALARM_P2;
+    doc["ema_clamp"]    = EMA_CLAMP;
 
     JsonArray arr = doc["cycles"].to<JsonArray>();
 
@@ -687,10 +687,6 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
         const TopOffConfig& cfg = waterAlgorithm.getConfig();
         JsonDocument doc;
         doc["success"]        = true;
-        doc["ema_alpha"]      = cfg.ema_alpha;
-        doc["ema_clamp"]      = cfg.ema_clamp;
-        doc["alarm_p1"]       = cfg.alarm_p1;
-        doc["alarm_p2"]       = cfg.alarm_p2;
         doc["zone_green"]     = cfg.zone_green;
         doc["zone_yellow"]    = cfg.zone_yellow;
         doc["initial_ema"]    = cfg.initial_ema;
@@ -699,7 +695,7 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
         return;
     }
 
-    // POST — walidacja i zapis
+    // POST — validate and save (EMA alpha/clamp and P1/P2 are compile-time constants)
     auto getF = [&](const char* name, float def) -> float {
         return request->hasParam(name, true)
             ? request->getParam(name, true)->value().toFloat()
@@ -707,31 +703,11 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     };
 
     const TopOffConfig& cur = waterAlgorithm.getConfig();
-    float alpha      = getF("ema_alpha",   cur.ema_alpha);
-    float clamp      = getF("ema_clamp",   cur.ema_clamp);
-    float p1         = getF("alarm_p1",    cur.alarm_p1);
-    float p2         = getF("alarm_p2",    cur.alarm_p2);
     float zGreen     = getF("zone_green",  cur.zone_green);
     float zYellow    = getF("zone_yellow", cur.zone_yellow);
     float initEma    = getF("initial_ema", cur.initial_ema);
 
-    // Walidacja
-    if (alpha < 0.05f || alpha > 0.50f) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"ema_alpha: 0.05–0.50\"}");
-        return;
-    }
-    if (clamp < 0.10f || clamp > 0.80f) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"ema_clamp: 0.10–0.80\"}");
-        return;
-    }
-    if (p1 < 0.01f || p1 > 2.0f) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"alarm_p1: 0.01–2.0\"}");
-        return;
-    }
-    if (p2 < 0.05f || p2 > 0.99f) {
-        request->send(400, "application/json", "{\"success\":false,\"error\":\"alarm_p2: 0.05–0.99\"}");
-        return;
-    }
+    // Validation
     if (zGreen < 1.0f || zGreen > 200.0f) {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"zone_green: 1.0–200.0\"}");
         return;
@@ -746,10 +722,6 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
     }
 
     TopOffConfig cfg = waterAlgorithm.getConfig();
-    cfg.ema_alpha   = alpha;
-    cfg.ema_clamp   = clamp;
-    cfg.alarm_p1    = p1;
-    cfg.alarm_p2    = p2;
     cfg.zone_green  = zGreen;
     cfg.zone_yellow = zYellow;
     cfg.initial_ema = initEma;
@@ -757,10 +729,6 @@ void handleAlgConfig(AsyncWebServerRequest* request) {
 
     JsonDocument doc;
     doc["success"]           = true;
-    doc["ema_alpha"]         = cfg.ema_alpha;
-    doc["ema_clamp"]         = cfg.ema_clamp;
-    doc["alarm_p1"]          = cfg.alarm_p1;
-    doc["alarm_p2"]          = cfg.alarm_p2;
     doc["zone_green"]        = cfg.zone_green;
     doc["zone_yellow"]       = cfg.zone_yellow;
     doc["initial_ema"]       = cfg.initial_ema;

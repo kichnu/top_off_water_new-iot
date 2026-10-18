@@ -1787,60 +1787,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         function fmtV(v) { return Math.round(v); }
 
-        function drawTimeAxisScrollable(ctx, minTs, maxTs, W, H, p) {
-            var DAY_S = 86400;
-            var tsRange = Math.max(maxTs - minTs, 1);
-            var cw = W - p.l - p.r;
-            function xTs(ts) { return p.l + (ts - minTs) / tsRange * cw; }
-
-            // Alternating day background bands (every other day slightly lighter)
-            var firstDay = Math.floor(minTs / DAY_S) * DAY_S;
-            for (var d = firstDay, idx = 0; d < maxTs; d += DAY_S, idx++) {
-                if (idx % 2 === 0) continue;
-                var x1 = Math.max(p.l, xTs(d));
-                var x2 = Math.min(p.l + cw, xTs(d + DAY_S));
-                if (x2 > x1) {
-                    ctx.fillStyle = 'rgba(255,255,255,0.025)';
-                    ctx.fillRect(x1, p.t, x2 - x1, H - p.t - p.b);
-                }
-            }
-
-            // Hour tick labels (HH:MM) — always 1h intervals since view = 6h
-            var firstTick = Math.ceil(minTs / 3600) * 3600;
-            ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-            for (var ts = firstTick; ts <= maxTs; ts += 3600) {
-                var d = new Date(ts * 1000);
-                ctx.fillStyle = '#94a3b8';
-                ctx.fillText(
-                    String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'),
-                    xTs(ts), H - p.b + 13
-                );
-            }
-
-            // Midnight separators + day date labels (DD.MM)
-            var firstMid = Math.ceil(minTs / DAY_S) * DAY_S;
-            for (var ts = firstMid; ts <= maxTs; ts += DAY_S) {
-                var x = xTs(ts);
-                ctx.save();
-                ctx.strokeStyle = 'rgba(148,163,184,0.18)';
-                ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
-                ctx.beginPath(); ctx.moveTo(x, p.t); ctx.lineTo(x, H - p.b); ctx.stroke();
-                ctx.setLineDash([]); ctx.restore();
-                var d = new Date(ts * 1000);
-                var lbl = String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0');
-                ctx.fillStyle = '#f97316'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-                ctx.fillText(lbl, x, H - p.b + 26);
-            }
-
-            // Left-edge date label for the starting day (when it's not at midnight)
-            var d0 = new Date(minTs * 1000);
-            if (d0.getHours() !== 0 || d0.getMinutes() !== 0) {
-                var lbl0 = String(d0.getDate()).padStart(2,'0') + '.' + String(d0.getMonth()+1).padStart(2,'0');
-                ctx.fillStyle = 'rgba(249,115,22,0.6)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
-                ctx.fillText(lbl0, p.l + 3, H - p.b + 26);
-            }
-        }
-
         var CHART_Y_MAX_FACTOR = 3;   // auto Y-max = ema_rate * CHART_Y_MAX_FACTOR
 
         function drawRateChart(pts, ema) {

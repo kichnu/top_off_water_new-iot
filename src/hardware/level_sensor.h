@@ -13,6 +13,7 @@
 #define LEVEL_SERIES_TIMEOUT_MS     3000UL   // series closed with what it has after this
 #define LEVEL_INIT_RETRY_MS        30000UL   // retry init when the sensor is not detected
 #define LEVEL_FAULT_SERIES             3     // consecutive bad series → FAULT
+#define LEVEL_BUS_RECOVERY_MS     300000UL   // min gap between full I2C bus recoveries in FAULT
 #define LEVEL_PUMP_QUIET_MS       120000UL   // no scheduled series this long after a pump stop
                                              // (partitioned tank equalizes through a small hole)
 

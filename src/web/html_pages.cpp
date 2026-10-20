@@ -452,9 +452,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
         .status-main-wifi.wifi-off .wifi-dot { color: var(--text-muted); }
         .status-info {
             display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-            background: var(--bg-input); border: 1px solid var(--border);
-            border-radius: var(--radius-sm); padding: 8px 16px;
-            font-size: 0.75rem; color: var(--text-secondary);
+            padding: 1px 16px;
+            font-size: 0.7rem; color: var(--text-secondary);
             font-family: 'Courier New', monospace; margin-top: 10px;
         }
         .status-info .si-sep { color: var(--text-muted); font-family: sans-serif; }
@@ -565,6 +564,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
         .cal-box {
             margin-top: 8px;
             padding: 10px 12px;
+            height: 160px;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             font-size: 0.72rem;

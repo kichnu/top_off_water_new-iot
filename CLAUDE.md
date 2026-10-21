@@ -55,6 +55,7 @@ hardware/           Hardware abstraction layer
   fram_controller.*    FRAM memory management (all persistent data)
   hardware_pins.h      GPIO pin definitions
   level_sensor.*       VL53L4CD ToF reservoir level — non-blocking sample series
+  level_event_log.*    Level sensor event log in FRAM (FAULT, resets, recovery) — diagnostics
   level_test.*         LVLTEST diagnostic level test (kept for diagnostics)
   pump_calibration.*   Guided portion calibration (4 runs, mean portion time in ms, FRAM in ReservoirConfig)
   pump_controller.*    ATO pump relay control (auto + direct/manual), run end cut by esp_timer (ms)
@@ -116,6 +117,7 @@ Defined in `hardware/fram_controller.h`:
 - `0x05A2-0x05C3`: ReservoirConfig incl. PumpCalibration (32B + 2B checksum), magic=0xB3
 - `0x05C4-0x05FF`: free (0x05C4-0x05D5 was the reserve portion counter, removed)
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
+- `0x1100-0x290F`: Level sensor event log (16B header + 48 × 128B), diagnostics
 
 ### Hardware Pin Configuration (Seeed Xiao ESP32-C3)
 
@@ -165,6 +167,7 @@ History/volumes:
 - `POST /api/set-fill-water-max` — set daily_limit_ml
 - `GET|POST /api/alg-config` — alarm-score zones and initial EMA (EMA alpha/clamp, P1/P2 are constants)
 - `GET|POST /api/reserve-config` — reservoir geometry (length, width, sensor → bottom, marker level)
+- `GET|POST /api/level-events` — level sensor event log from FRAM (GET: plain text, POST: clear)
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 
 Full parameter-level reference: see `README`.

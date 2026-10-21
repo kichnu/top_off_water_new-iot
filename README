@@ -192,6 +192,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | GET | `/api/fill-water-max` | Get `dose_ml` and `daily_limit_ml` |
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
 | GET/POST | `/api/alg-config` | Get/set alarm-score zones and initial EMA |
+| GET/POST | `/api/level-events` | Level sensor event log kept in FRAM (boot, FAULT with the rejection breakdown, soft/XSHUT resets, bus recovery, recovery); GET returns plain text, POST clears it |
 | GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`); returns derived `ml_per_mm`, `capacity_ml`, `usable_ml`, `low_ml`, `hidden_ml` |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |
@@ -353,4 +354,5 @@ Defined in `src/hardware/fram_controller.h` (unified layout, shared with the cre
   0x05C4–0x05D5   (unused — former reserve portion counter)
   0x0600–0x0603   Top-off ring buffer count + write pointer
   0x0610–0x0AC0   Top-off ring buffer (60 × TopOffRecord, 20 bytes each)
+  0x1100–0x290F   Level sensor event log (16-byte header + 48 × 128-byte events)
 ```

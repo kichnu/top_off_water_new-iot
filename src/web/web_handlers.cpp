@@ -18,6 +18,7 @@
 #include "../hardware/reserve_controller.h"
 #include "../hardware/pump_calibration.h"
 #include "../hardware/level_sensor.h"
+#include "../hardware/level_event_log.h"
 #include "../config/reservoir_config.h"
 
 void handleDashboard(AsyncWebServerRequest* request) {
@@ -834,4 +835,23 @@ void handlePumpCalibration(AsyncWebServerRequest* request) {
     if (err) doc["error"] = err;
     String resp; serializeJson(doc, resp);
     request->send(err ? 409 : 200, "application/json", resp);
+}
+
+// ===============================
+// LEVEL SENSOR EVENT LOG (diagnostics)
+// ===============================
+
+// GET: stored level sensor events as plain text; POST: clear the log
+void handleLevelEvents(AsyncWebServerRequest *request) {
+    if (!checkAuthentication(request)) {
+        request->send(401, "text/plain", "Unauthorized");
+        return;
+    }
+    if (request->method() == HTTP_POST) {
+        clearLevelEvents();
+        LOG_INFO("Level event log cleared");
+        request->send(200, "application/json", "{\"success\":true}");
+        return;
+    }
+    request->send(200, "text/plain; charset=utf-8", getLevelEventsText());
 }

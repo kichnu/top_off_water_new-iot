@@ -20,6 +20,7 @@
 #include "hardware/reserve_controller.h"
 #include "hardware/pump_calibration.h"
 #include "hardware/level_sensor.h"
+#include "hardware/level_event_log.h"
 #include "hardware/level_test.h"
 #include "config/reservoir_config.h"
 #include "provisioning/prov_detector.h"
@@ -136,6 +137,7 @@ void setup() {
     Wire.setClock(100000);
     delay(10);
     framReconnect();
+    initLevelEventLog();
     initLevelSensor();
 
     bool credentials_loaded = initCredentialsManager();

@@ -2,10 +2,12 @@
 #include <Wire.h>
 #include <VL53L4CD.h>
 #include <math.h>
+#include <stdarg.h>
 #include "../core/logging.h"
 #include "pump_controller.h"
 #include "hardware_pins.h"
 #include "fram_controller.h"
+#include "level_event_log.h"
 
 static VL53L4CD g_tof;
 
@@ -19,6 +21,33 @@ static uint32_t         g_lastPumpStop  = 0;   // millis() of the last pump stop
 static bool             g_recoveryDone  = false;
 static uint32_t         g_lastRecovery  = 0;
 static uint8_t          g_retries       = 0;   // re-init attempts since the last valid series
+static uint8_t          g_faultEvents   = 0;   // events stored in FRAM during the current FAULT
+
+#define LEVEL_FAULT_EVENTS_MAX   8   // retry/recovery events stored per FAULT (FAULT + recovered always)
+
+enum EventLevel : uint8_t { EV_INFO, EV_WARN, EV_ERROR };
+
+// Log a line and optionally store it in the FRAM event log
+static void logEvent(EventLevel lvl, bool store, const char* fmt, ...) {
+    char buf[200];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    switch (lvl) {
+        case EV_INFO:  LOG_INFO("%s", buf);    break;
+        case EV_WARN:  LOG_WARNING("%s", buf); break;
+        default:       LOG_ERROR("%s", buf);   break;
+    }
+    if (store) addLevelEvent(buf);
+}
+
+// Retry/recovery events are capped per FAULT so a long outage cannot flush the log
+static bool storeFaultEvent() {
+    if (g_faultEvents >= LEVEL_FAULT_EVENTS_MAX) return false;
+    g_faultEvents++;
+    return true;
+}
 
 // Running series accumulator
 static bool     g_collecting     = false;
@@ -114,9 +143,10 @@ static bool recoverBus() {
     delay(10);
     framReconnect();
     bool ok = tryInit();
-    LOG_WARNING("Level sensor: bus recovery %s (SDA %s, SCL %s, %u pulses, SDA now %s; ACK tof=%u fram=%u rtc=%u)",
-                ok ? "OK" : "failed", sdaLow ? "LOW" : "high", sclLow ? "LOW" : "high", pulses,
-                sdaFreed ? "high" : "LOW", probe(0x29), probe(0x50), probe(0x68));
+    logEvent(EV_WARN, storeFaultEvent(),
+             "Level sensor: bus recovery %s (SDA %s, SCL %s, %u pulses, SDA now %s; ACK tof=%u fram=%u rtc=%u)",
+             ok ? "OK" : "failed", sdaLow ? "LOW" : "high", sclLow ? "LOW" : "high", pulses,
+             sdaFreed ? "high" : "LOW", probe(0x29), probe(0x50), probe(0x68));
     return ok;
 }
 
@@ -129,11 +159,12 @@ static void retryInit(uint32_t now) {
     if (hw) hardReset();
     const char* how = hw ? "XSHUT" : "soft";
     if (tryInit()) {
-        LOG_WARNING("Level sensor: re-init OK (%s reset, down %ld s)", how, secondsSince(g_lastGoodMs, now));
+        logEvent(EV_WARN, storeFaultEvent(), "Level sensor: re-init OK (%s reset, down %ld s)",
+                 how, secondsSince(g_lastGoodMs, now));
         return;
     }
-    LOG_WARNING("Level sensor: re-init failed (%s reset, down %ld s, ACK tof=%u fram=%u rtc=%u)",
-                how, secondsSince(g_lastGoodMs, now), probe(0x29), probe(0x50), probe(0x68));
+    logEvent(EV_WARN, storeFaultEvent(), "Level sensor: re-init failed (%s reset, down %ld s, ACK tof=%u fram=%u rtc=%u)",
+             how, secondsSince(g_lastGoodMs, now), probe(0x29), probe(0x50), probe(0x68));
     if (isPumpActive()) return;
     if (g_recoveryDone && now - g_lastRecovery < LEVEL_BUS_RECOVERY_MS) return;
     g_recoveryDone = true;
@@ -181,7 +212,7 @@ static void finishSeries() {
         g_recoveryDone = false;
         g_retries = 0;
         if (g_state == LEVEL_SENSOR_FAULT) {
-            LOG_INFO("Level sensor: recovered (down %ld s)", secondsSince(g_lastGoodMs, g_lastSeriesEnd));
+            logEvent(EV_INFO, true, "Level sensor: recovered (down %ld s)", secondsSince(g_lastGoodMs, g_lastSeriesEnd));
         }
         g_lastGoodMs = g_lastSeriesEnd;
         g_state = LEVEL_SENSOR_OK;
@@ -195,15 +226,19 @@ static void finishSeries() {
         for (uint8_t i = 0; i < 16 && len < sizeof(st); i++) {
             if (g_statusCnt[i]) len += snprintf(st + len, sizeof(st) - len, " st%u=%u", i == 15 ? 255 : i, g_statusCnt[i]);
         }
-        LOG_WARNING("Level: bad series (n=%u rej=%u [i2c=%u%s], %u in a row; last rej %u mm sig=%u amb=%u sigma=%u spads=%u)",
-                    s.samples, s.rejected, g_i2cErr, st, g_badSeries,
-                    g_lastRej.range_mm, g_lastRej.signal_rate_kcps, g_lastRej.ambient_rate_kcps,
-                    g_lastRej.sigma_mm, g_lastRej.number_of_spad);
-        if (g_badSeries >= LEVEL_FAULT_SERIES && g_state == LEVEL_SENSOR_OK) {
+        // The series that trips the FAULT is stored (rejection breakdown of the failure)
+        bool tripsFault = g_badSeries >= LEVEL_FAULT_SERIES && g_state == LEVEL_SENSOR_OK;
+        logEvent(EV_WARN, tripsFault,
+                 "Level: bad series (n=%u rej=%u [i2c=%u%s], %u in a row; last rej %u mm sig=%u amb=%u sigma=%u spads=%u)",
+                 s.samples, s.rejected, g_i2cErr, st, g_badSeries,
+                 g_lastRej.range_mm, g_lastRej.signal_rate_kcps, g_lastRej.ambient_rate_kcps,
+                 g_lastRej.sigma_mm, g_lastRej.number_of_spad);
+        if (tripsFault) {
             g_state = LEVEL_SENSOR_FAULT;
-            LOG_ERROR("Level sensor: FAULT after %u bad series (last good %ld s ago, last pump stop %ld s ago, uptime %lu s)",
-                      g_badSeries, secondsSince(g_lastGoodMs, g_lastSeriesEnd),
-                      secondsSince(g_lastPumpStop, g_lastSeriesEnd), (unsigned long)(g_lastSeriesEnd / 1000));
+            g_faultEvents = 0;
+            logEvent(EV_ERROR, true, "Level sensor: FAULT after %u bad series (last good %ld s ago, last pump stop %ld s ago, uptime %lu s)",
+                     g_badSeries, secondsSince(g_lastGoodMs, g_lastSeriesEnd),
+                     secondsSince(g_lastPumpStop, g_lastSeriesEnd), (unsigned long)(g_lastSeriesEnd / 1000));
         }
         // Sensor may have lost its config (brown-out, loose wire) or the bus may hang — retry periodically
         if (g_state == LEVEL_SENSOR_FAULT && g_lastSeriesEnd - g_lastInitTry >= LEVEL_INIT_RETRY_MS) {
@@ -219,12 +254,14 @@ void initLevelSensor() {
     hardReset();
     if (tryInit()) {
         g_state = LEVEL_SENSOR_OK;
+        addLevelEvent("Boot: sensor initialized");
         LOG_INFO("Level sensor: VL53L4CD initialized (budget %d ms, N=%d, every %lu s)",
                  LEVEL_TIMING_BUDGET_MS, LEVEL_SAMPLES_PER_SERIES, LEVEL_SERIES_INTERVAL_MS / 1000);
         // First series starts from loop() — setup() takes longer than the
         // series timeout, a series started here would close empty
     } else {
         g_state = LEVEL_SENSOR_ABSENT;
+        addLevelEvent("Boot: sensor not detected");
         LOG_ERROR("Level sensor: VL53L4CD not detected (retry every %lu s)", LEVEL_INIT_RETRY_MS / 1000);
     }
 }
@@ -238,7 +275,7 @@ void updateLevelSensor() {
             if (tryInit()) {
                 g_state = LEVEL_SENSOR_OK;
                 g_badSeries = 0;
-                LOG_INFO("Level sensor: VL53L4CD detected");
+                logEvent(EV_INFO, true, "Level sensor: VL53L4CD detected");
                 startSeries();
             }
         }

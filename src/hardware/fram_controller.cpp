@@ -40,6 +40,16 @@ bool framReconnect() {
     return true;
 }
 
+bool framReadRaw(uint16_t addr, uint8_t* buf, size_t len) {
+    if (!framInitialized) return false;
+    return fram.read(addr, buf, len);
+}
+
+bool framWriteRaw(uint16_t addr, const uint8_t* buf, size_t len) {
+    if (!framInitialized) return false;
+    return fram.write(addr, (uint8_t*)buf, len);
+}
+
 bool isFramInitialized() {
     return framInitialized;
 }

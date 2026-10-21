@@ -101,6 +101,10 @@ struct PumpCycle {
 #define FRAM_ADDR_TOPOFF_WPTR       0x0602   // 2 bytes — write pointer (ring buffer)
 #define FRAM_ADDR_TOPOFF_DATA       0x0610   // Start danych: 60 × 20 = 1200 bajtów → kończy się 0x0AC0
 
+// Level sensor event log (diagnostics, see level_event_log.h): 16 B header + 48 × 128 B → ends 0x2910
+// (0x1000 is the scratch address of testFRAM())
+#define FRAM_ADDR_LEVEL_LOG         0x1100
+
 // Common constants
 // #define FRAM_MAGIC_NUMBER      0x57415452  // "WATR" in hex
 // #define FRAM_DATA_VERSION      0x0002      // Version 2 (updated for dual-mode)
@@ -113,6 +117,9 @@ bool loadVolumeFromFRAM(float& volume);
 bool saveVolumeToFRAM(float volume);
 bool verifyFRAM();
 void testFRAM();
+// Raw access for self-checked blocks (e.g. the level event log)
+bool framReadRaw(uint16_t addr, uint8_t* buf, size_t len);
+bool framWriteRaw(uint16_t addr, const uint8_t* buf, size_t len);
 
 struct DailyVolumeData {
     uint16_t volume_ml;

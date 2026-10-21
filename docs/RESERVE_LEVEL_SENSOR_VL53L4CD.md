@@ -1,7 +1,7 @@
 # Plan wdrożenia: VL53L4CD jako monitor poziomu wody w rezerwie
 
 Wersja 5 (2026-10-17) — czujnik tylko informacyjnie (szacunek ±2 cm), stop pompy przy pustym
-zbiorniku = pływak (GPIO 20), kalibracja pompy 4 przebiegi / średnia, licznik porcji i procedura
+zbiorniku = pływak (GPIO 8), kalibracja pompy 4 przebiegi / średnia, licznik porcji i procedura
 „Rezerwa uzupełniona” z pomiarem usunięte.
 Wersja 4 (2026-10-15) — licznik porcji + kontrola dawek czujnikiem; wersje 1–3 — w historii gita.
 Testy fizyczne czujnika: `~/Dokumenty/My_apps/TOOLS/distance_sensor_pololu/WNIOSKI.md`.
@@ -9,8 +9,8 @@ Testy fizyczne czujnika: `~/Dokumenty/My_apps/TOOLS/distance_sensor_pololu/WNIOS
 ## ⚠ Przypomnienia (do zrobienia)
 
 - **Pływak rezerwy wyłączony w firmware**: `RESERVE_FLOAT_ENABLED = 0` w
-  `src/hardware/reserve_controller.h`. Po zamontowaniu pływaka na GPIO 20 (do GND, LOW = brak
-  wody) ustawić na 1, zbudować, sprawdzić log startu („Reserve float switch on GPIO 20: HIGH”)
+  `src/hardware/reserve_controller.h`. Po zamontowaniu pływaka na GPIO 8 (do GND, LOW = brak
+  wody) ustawić na 1, zbudować, sprawdzić log startu („Reserve float switch on GPIO 8: HIGH”)
   i przetestować: opuszczenie pływaka → po 3 s alarm + blokada porcji; podniesienie → alarm
   trwa do Cycle Reset. Do tego czasu NIC nie zatrzymuje pompy przy pustym zbiorniku.
 - **Test `LVLTEST` (`level_test.*`) zostaje** — narzędzie diagnostyczne czujnika; usunąć dopiero,
@@ -25,14 +25,15 @@ użytkownika. Bez alarmów z czujnika. Zatrzymanie pompy przy pustym zbiorniku �
 ## 2. Sprzęt i zbiornik
 
 - VL53L4CD (Pololu #3692, `pololu/VL53L4CD`) na wspólnym I2C (SDA GPIO 5, SCL GPIO 6,
-  100 kHz), adres 0x29, XSHUT/INT niepodłączone. Bez osłony przed czujnikiem.
+  100 kHz), adres 0x29, XSHUT na GPIO 20 (open-drain — reset sprzętowy przy starcie i w FAULT), INT
+  niepodłączone. Bez osłony przed czujnikiem.
 - Otwór w obudowie: cylindryczny Ø10 mm, krawędź zewnętrzna 5,5 mm od czujnika
   (Ø7 mm dawał 100% odrzuconych próbek).
 - Zbiornik testowy: 282 × 202 mm, ścianki pionowe (56,96 ml/mm), czujnik 470 mm nad dnem,
   znacznik (maksymalny poziom) 380 mm od dna. Przegroda z małym otworem — 2 min ciszy
   pomiarowej po pompie (`LEVEL_PUMP_QUIET_MS`).
-- Pływak rezerwy: GPIO 20 (UART0 RX — przy starcie wejście, nie strap), INPUT_PULLUP, LOW =
-  brak wody. Nie GPIO 21: ROM wysyła tam log startowy (TX w stanie HIGH), zamknięty pływak do
+- Pływak rezerwy: GPIO 8 (strap, ale stan niski ma znaczenie tylko w trybie download przy
+  GPIO 9 = LOW), INPUT_PULLUP, LOW = brak wody. GPIO 20 zajęte przez XSHUT czujnika. Nie GPIO 21: ROM wysyła tam log startowy (TX w stanie HIGH), zamknięty pływak do
   GND zwierałby wyjście.
 
 ## 3. Dokładność czujnika — wnioski z testów (2026-10-17)
@@ -115,7 +116,7 @@ bez automatycznego powrotu do Auto.
 
 ## 8. Pływak rezerwy — stop pompy (wdrożone v5, tymczasowo wyłączone)
 
-- GPIO 20, debounce 3 s. LOW → brak wody: `BUZZER_ALARM`, czerwony znaczek, nowa porcja (auto
+- GPIO 8, debounce 3 s. LOW → brak wody: `BUZZER_ALARM`, czerwony znaczek, nowa porcja (auto
   i ręczna) nie startuje; rozpoczęta się kończy.
 - Zatrzask: po podniesieniu pływaka alarm trwa do Cycle Reset (GUI) albo przycisku sprzętowego;
   reset przy wciąż opuszczonym pływaku nie kasuje alarmu.

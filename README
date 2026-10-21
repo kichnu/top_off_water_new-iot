@@ -11,7 +11,8 @@ Embedded system for automated aquarium water level management. Built on Seeed XI
 - GPIO 10 — `ATO_PUMP_RELAY_PIN`: ATO pump relay (**active HIGH**: HIGH = ON, LOW = OFF)
 - GPIO 4 — `RESET_PIN`: provisioning button (INPUT_PULLUP, active LOW; hold 5s to enter provisioning)
 - GPIO 7 — `BUZZER_PIN`: buzzer (active HIGH)
-- GPIO 20 — `RESERVOIR_FLOAT_PIN`: source-water reservoir float switch (INPUT_PULLUP, LOW = no water). Temporarily disabled in firmware (`RESERVE_FLOAT_ENABLED = 0` in `reserve_controller.h`) until the switch is installed.
+- GPIO 20 — `LEVEL_XSHUT_PIN`: VL53L4CD XSHUT (open-drain, active LOW) — hardware reset of the level sensor at boot and on a sensor fault
+- GPIO 8 — `RESERVOIR_FLOAT_PIN`: source-water reservoir float switch (INPUT_PULLUP, LOW = no water). Temporarily disabled in firmware (`RESERVE_FLOAT_ENABLED = 0` in `reserve_controller.h`) until the switch is installed.
 
 **I2C bus** (SDA=GPIO 5, SCL=GPIO 6):
 - VL53L4CD ToF sensor (0x29) — reservoir water level (reserve estimate, information only)

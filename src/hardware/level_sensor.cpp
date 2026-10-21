@@ -18,6 +18,7 @@ static uint32_t         g_lastGoodMs    = 0;   // millis() of the last valid ser
 static uint32_t         g_lastPumpStop  = 0;   // millis() of the last pump stop (0 = none)
 static bool             g_recoveryDone  = false;
 static uint32_t         g_lastRecovery  = 0;
+static uint8_t          g_retries       = 0;   // re-init attempts since the last valid series
 
 // Running series accumulator
 static bool     g_collecting     = false;
@@ -34,11 +35,33 @@ static double   g_sum            = 0;
 static double   g_sumSq          = 0;
 static uint32_t g_sumSignal      = 0;
 static uint32_t g_sumAmbient     = 0;
+// Rejection breakdown for the bad-series log
+static uint8_t  g_i2cErr         = 0;       // reads with an I2C error
+static uint8_t  g_statusCnt[16]  = {};      // per range_status (0..14, 15 = other/255)
+static VL53L4CD::RangingData g_lastRej = {};
+
+// Hardware reset: XSHUT low puts the sensor into HW standby, releasing it reboots
+// its firmware (like a power cycle). No-op when XSHUT is not wired.
+static void hardReset() {
+    digitalWrite(LEVEL_XSHUT_PIN, LOW);
+    delay(10);
+    digitalWrite(LEVEL_XSHUT_PIN, HIGH);   // released — the module pull-up enables the sensor
+    delay(5);                              // boot (tBOOT ~1.2 ms)
+}
 
 static bool tryInit() {
     g_lastInitTry = millis();
     g_tof.setBus(&Wire);
     g_tof.setTimeout(200);
+    // init() neither stops ranging nor resets the sensor, so a re-init would only
+    // rewrite the config of a running (possibly wedged) device. Stop ranging and
+    // soft-reset first (SOFT_RESET 0x0000: 0 → 1, as in the ST ULD); harmless
+    // when the sensor is absent (NACK)
+    g_tof.stopContinuous();
+    g_tof.writeReg(VL53L4CD::SOFT_RESET, 0x00);
+    delayMicroseconds(100);
+    g_tof.writeReg(VL53L4CD::SOFT_RESET, 0x01);
+    delay(5);   // boot (tBOOT ~1.2 ms); init() then waits for FIRMWARE__SYSTEM_STATUS
     if (!g_tof.init()) {
         return false;
     }
@@ -97,15 +120,20 @@ static bool recoverBus() {
     return ok;
 }
 
-// Called in FAULT every LEVEL_INIT_RETRY_MS: plain re-init first, then a full
-// bus recovery (pump off, at most every LEVEL_BUS_RECOVERY_MS)
+// Called in FAULT every LEVEL_INIT_RETRY_MS: re-init with a soft reset first, with
+// an XSHUT hardware reset on later attempts, then a full bus recovery (pump off,
+// at most every LEVEL_BUS_RECOVERY_MS)
 static void retryInit(uint32_t now) {
+    bool hw = g_retries > 0;
+    if (g_retries < 255) g_retries++;
+    if (hw) hardReset();
+    const char* how = hw ? "XSHUT" : "soft";
     if (tryInit()) {
-        LOG_WARNING("Level sensor: re-init OK (down %ld s)", secondsSince(g_lastGoodMs, now));
+        LOG_WARNING("Level sensor: re-init OK (%s reset, down %ld s)", how, secondsSince(g_lastGoodMs, now));
         return;
     }
-    LOG_WARNING("Level sensor: re-init failed (down %ld s, ACK tof=%u fram=%u rtc=%u)",
-                secondsSince(g_lastGoodMs, now), probe(0x29), probe(0x50), probe(0x68));
+    LOG_WARNING("Level sensor: re-init failed (%s reset, down %ld s, ACK tof=%u fram=%u rtc=%u)",
+                how, secondsSince(g_lastGoodMs, now), probe(0x29), probe(0x50), probe(0x68));
     if (isPumpActive()) return;
     if (g_recoveryDone && now - g_lastRecovery < LEVEL_BUS_RECOVERY_MS) return;
     g_recoveryDone = true;
@@ -120,6 +148,8 @@ static void startSeries() {
     g_n = g_rej = 0;
     g_sum = g_sumSq = 0;
     g_sumSignal = g_sumAmbient = 0;
+    g_i2cErr = 0;
+    memset(g_statusCnt, 0, sizeof(g_statusCnt));
 }
 
 static void finishSeries() {
@@ -149,6 +179,7 @@ static void finishSeries() {
     if (s.valid) {
         g_badSeries = 0;
         g_recoveryDone = false;
+        g_retries = 0;
         if (g_state == LEVEL_SENSOR_FAULT) {
             LOG_INFO("Level sensor: recovered (down %ld s)", secondsSince(g_lastGoodMs, g_lastSeriesEnd));
         }
@@ -159,7 +190,15 @@ static void finishSeries() {
                  s.signal_kcps, s.ambient_kcps);
     } else {
         if (g_badSeries < 255) g_badSeries++;
-        LOG_WARNING("Level: bad series (n=%u rej=%u, %u in a row)", s.samples, s.rejected, g_badSeries);
+        char st[64] = "";
+        size_t len = 0;
+        for (uint8_t i = 0; i < 16 && len < sizeof(st); i++) {
+            if (g_statusCnt[i]) len += snprintf(st + len, sizeof(st) - len, " st%u=%u", i == 15 ? 255 : i, g_statusCnt[i]);
+        }
+        LOG_WARNING("Level: bad series (n=%u rej=%u [i2c=%u%s], %u in a row; last rej %u mm sig=%u amb=%u sigma=%u spads=%u)",
+                    s.samples, s.rejected, g_i2cErr, st, g_badSeries,
+                    g_lastRej.range_mm, g_lastRej.signal_rate_kcps, g_lastRej.ambient_rate_kcps,
+                    g_lastRej.sigma_mm, g_lastRej.number_of_spad);
         if (g_badSeries >= LEVEL_FAULT_SERIES && g_state == LEVEL_SENSOR_OK) {
             g_state = LEVEL_SENSOR_FAULT;
             LOG_ERROR("Level sensor: FAULT after %u bad series (last good %ld s ago, last pump stop %ld s ago, uptime %lu s)",
@@ -174,6 +213,10 @@ static void finishSeries() {
 }
 
 void initLevelSensor() {
+    // ESP-only resets (midnight restart, OTA) do not power-cycle the sensor —
+    // start it from a clean state
+    pinMode(LEVEL_XSHUT_PIN, OUTPUT_OPEN_DRAIN);
+    hardReset();
     if (tryInit()) {
         g_state = LEVEL_SENSOR_OK;
         LOG_INFO("Level sensor: VL53L4CD initialized (budget %d ms, N=%d, every %lu s)",
@@ -191,6 +234,7 @@ void updateLevelSensor() {
 
     if (g_state == LEVEL_SENSOR_ABSENT) {
         if (now - g_lastInitTry >= LEVEL_INIT_RETRY_MS) {
+            hardReset();
             if (tryInit()) {
                 g_state = LEVEL_SENSOR_OK;
                 g_badSeries = 0;
@@ -241,6 +285,7 @@ void updateLevelSensor() {
     g_tof.read(false);
     if (g_tof.last_status != 0) {
         g_rej++;
+        if (g_i2cErr < 255) g_i2cErr++;
         return;
     }
 
@@ -252,6 +297,9 @@ void updateLevelSensor() {
     const VL53L4CD::RangingData& r = g_tof.ranging_data;
     if (r.range_status != 0) {
         g_rej++;
+        uint8_t idx = r.range_status < 15 ? r.range_status : 15;
+        if (g_statusCnt[idx] < 255) g_statusCnt[idx]++;
+        g_lastRej = r;
     } else {
         g_n++;
         g_sum        += r.range_mm;

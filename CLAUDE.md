@@ -127,13 +127,14 @@ Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
 - GPIO 6:  `I2C_SCL_PIN` — I2C bus
 - GPIO 7:  `BUZZER_PIN` — buzzer (**active HIGH**)
 - GPIO 10: `ATO_PUMP_RELAY_PIN` — ATO pump relay (**active HIGH**: HIGH = ON, LOW = OFF)
-- GPIO 20: `RESERVOIR_FLOAT_PIN` — reservoir float switch (INPUT_PULLUP, LOW = no water);
+- GPIO 8:  `RESERVOIR_FLOAT_PIN` — reservoir float switch (INPUT_PULLUP, LOW = no water);
   temporarily disabled (`RESERVE_FLOAT_ENABLED = 0` in `reserve_controller.h`) until installed
-- Free: GPIO 2, 8, 9, 21 (21 = UART0 TX, driven HIGH by the ROM boot log — no switch to GND)
+- GPIO 20: `LEVEL_XSHUT_PIN` — VL53L4CD XSHUT (open-drain only, active LOW; module pull-up to 2.8 V)
+- Free: GPIO 2, 9, 21 (21 = UART0 TX, driven HIGH by the ROM boot log — no switch to GND)
 
 > Note: output levels are defined as `PUMP_RELAY_ON/OFF` and `BUZZER_LEVEL_ON/OFF` in
 > `hardware_pins.h`. Reserve: the VL53L4CD level is an estimate (~±2 cm, information only,
-> no alarms); the pump stop on an empty reservoir is the float switch on GPIO 20.
+> no alarms); the pump stop on an empty reservoir is the float switch on GPIO 8.
 > GPIO 9 is the BOOT strap pin (LOW during boot → download mode) — must stay unconnected.
 
 ### Key API Endpoints (Production Mode)

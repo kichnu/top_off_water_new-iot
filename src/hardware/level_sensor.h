@@ -3,7 +3,8 @@
 
 #include <Arduino.h>
 
-// VL53L4CD ToF sensor above the source-water reservoir (shared I2C bus, addr 0x29).
+// VL53L4CD ToF sensor above the source-water reservoir (shared I2C bus, addr 0x29,
+// XSHUT on LEVEL_XSHUT_PIN for hardware resets).
 // Measures distance to the water surface in non-blocking series of N samples
 // (one sample per loop() iteration).
 

@@ -68,6 +68,46 @@ static uint32_t g_sumAmbient     = 0;
 static uint8_t  g_i2cErr         = 0;       // reads with an I2C error
 static uint8_t  g_statusCnt[16]  = {};      // per range_status (0..14, 15 = other/255)
 static VL53L4CD::RangingData g_lastRej = {};
+// Data-ready polling — tells "sensor stopped ranging" from "sensor not answering"
+static uint16_t g_polls          = 0;       // GPIO__TIO_HV_STATUS reads in the series
+static uint16_t g_pollFail       = 0;       // of which failed on I2C
+static uint8_t  g_pollErr        = 0;       // last failure: endTransmission() code, 0xFE = short read
+static uint8_t  g_lastHv         = 0xFF;    // last GPIO__TIO_HV_STATUS read successfully
+
+// 8-bit register read keeping the I2C result (the library returns 0xFF on a failed
+// read, which dataReady() takes as "not ready"). err: endTransmission() code, 0xFE = short read
+static bool readRegChecked(uint16_t reg, uint8_t& value, uint8_t& err) {
+    Wire.beginTransmission(g_tof.getAddress());
+    Wire.write((uint8_t)(reg >> 8));
+    Wire.write((uint8_t)reg);
+    err = Wire.endTransmission();
+    if (err != 0) return false;
+    if (Wire.requestFrom(g_tof.getAddress(), (uint8_t)1) != 1) {
+        err = 0xFE;
+        return false;
+    }
+    value = Wire.read();
+    return true;
+}
+
+// Register as 2 hex digits, "--" when the read failed
+static const char* regHex(uint16_t reg, char* buf) {
+    uint8_t v, err;
+    if (readRegChecked(reg, v, err)) snprintf(buf, 3, "%02X", v);
+    else strcpy(buf, "--");
+    return buf;
+}
+
+// Snapshot of the ranging state, stored at boot as the healthy reference and in a
+// no-data series (start: SYSTEM_START readback, written 21 = continuous, 80 = stop;
+// fw: 03 = booted; mux: interrupt polarity; int: interrupt config; rs: range status)
+static void regSnapshot(char* buf, size_t len) {
+    char rStart[3], rFw[3], rMux[3], rInt[3], rRs[3];
+    snprintf(buf, len, "start=%s fw=%s mux=%s int=%s rs=%s",
+             regHex(VL53L4CD::SYSTEM_START, rStart), regHex(VL53L4CD::FIRMWARE__SYSTEM_STATUS, rFw),
+             regHex(VL53L4CD::GPIO_HV_MUX__CTRL, rMux), regHex(VL53L4CD::SYSTEM__INTERRUPT, rInt),
+             regHex(VL53L4CD::RESULT__RANGE_STATUS, rRs));
+}
 
 // Hardware reset: XSHUT low puts the sensor into HW standby, releasing it reboots
 // its firmware (like a power cycle). No-op when XSHUT is not wired.
@@ -181,6 +221,9 @@ static void startSeries() {
     g_sumSignal = g_sumAmbient = 0;
     g_i2cErr = 0;
     memset(g_statusCnt, 0, sizeof(g_statusCnt));
+    g_polls = g_pollFail = 0;
+    g_pollErr = 0;
+    g_lastHv  = 0xFF;
 }
 
 static void finishSeries() {
@@ -228,11 +271,20 @@ static void finishSeries() {
         }
         // The series that trips the FAULT is stored (rejection breakdown of the failure)
         bool tripsFault = g_badSeries >= LEVEL_FAULT_SERIES && g_state == LEVEL_SENSOR_OK;
-        logEvent(EV_WARN, tripsFault,
-                 "Level: bad series (n=%u rej=%u [i2c=%u%s], %u in a row; last rej %u mm sig=%u amb=%u sigma=%u spads=%u)",
-                 s.samples, s.rejected, g_i2cErr, st, g_badSeries,
-                 g_lastRej.range_mm, g_lastRej.signal_rate_kcps, g_lastRej.ambient_rate_kcps,
-                 g_lastRej.sigma_mm, g_lastRej.number_of_spad);
+        if (s.samples == 0 && s.rejected == 0) {
+            // Data never ready: polling result + snapshot of the ranging state
+            char snap[64];
+            regSnapshot(snap, sizeof(snap));
+            logEvent(EV_WARN, tripsFault,
+                     "Level: no data, %u in a row (polls=%u fail=%u e%u hv=%02X; %s)",
+                     g_badSeries, g_polls, g_pollFail, g_pollErr, g_lastHv, snap);
+        } else {
+            logEvent(EV_WARN, tripsFault,
+                     "Level: bad series (n=%u rej=%u [i2c=%u%s], %u in a row; last rej %u mm sig=%u amb=%u sigma=%u spads=%u)",
+                     s.samples, s.rejected, g_i2cErr, st, g_badSeries,
+                     g_lastRej.range_mm, g_lastRej.signal_rate_kcps, g_lastRej.ambient_rate_kcps,
+                     g_lastRej.sigma_mm, g_lastRej.number_of_spad);
+        }
         if (tripsFault) {
             g_state = LEVEL_SENSOR_FAULT;
             g_faultEvents = 0;
@@ -254,7 +306,9 @@ void initLevelSensor() {
     hardReset();
     if (tryInit()) {
         g_state = LEVEL_SENSOR_OK;
-        addLevelEvent("Boot: sensor initialized");
+        char snap[64];
+        regSnapshot(snap, sizeof(snap));
+        logEvent(EV_INFO, true, "Boot: sensor initialized (%s)", snap);
         LOG_INFO("Level sensor: VL53L4CD initialized (budget %d ms, N=%d, every %lu s)",
                  LEVEL_TIMING_BUDGET_MS, LEVEL_SAMPLES_PER_SERIES, LEVEL_SERIES_INTERVAL_MS / 1000);
         // First series starts from loop() — setup() takes longer than the
@@ -318,7 +372,16 @@ void updateLevelSensor() {
         return;
     }
 
-    if (!g_tof.dataReady()) return;
+    // Same test as g_tof.dataReady(), but a failed read is counted, not taken as "not ready"
+    uint8_t hv, err;
+    if (g_polls < 0xFFFF) g_polls++;
+    if (!readRegChecked(VL53L4CD::GPIO__TIO_HV_STATUS, hv, err)) {
+        if (g_pollFail < 0xFFFF) g_pollFail++;
+        g_pollErr = err;
+        return;
+    }
+    g_lastHv = hv;
+    if (hv & 0x01) return;
     g_tof.read(false);
     if (g_tof.last_status != 0) {
         g_rej++;

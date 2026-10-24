@@ -192,7 +192,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | GET | `/api/fill-water-max` | Get `dose_ml` and `daily_limit_ml` |
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
 | GET/POST | `/api/alg-config` | Get/set alarm-score zones and initial EMA |
-| GET/POST | `/api/level-events` | Level sensor event log kept in FRAM (boot, FAULT with the rejection breakdown, soft/XSHUT resets, bus recovery, recovery); GET returns plain text, POST clears it |
+| GET/POST | `/api/level-events` | Level sensor event log kept in FRAM (boot, sensor self-resets detected after a pump run or in a no-data series and re-initialized at once, FAULT with the rejection breakdown, soft/XSHUT resets, bus recovery, recovery); GET returns plain text, POST clears it |
 | GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`); returns derived `ml_per_mm`, `capacity_ml`, `usable_ml`, `low_ml`, `hidden_ml` |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |

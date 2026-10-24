@@ -17,6 +17,7 @@
 #define LEVEL_BUS_RECOVERY_MS     300000UL   // min gap between full I2C bus recoveries in FAULT
 #define LEVEL_PUMP_QUIET_MS       120000UL   // no scheduled series this long after a pump stop
                                              // (partitioned tank equalizes through a small hole)
+#define LEVEL_PUMP_CHECK_MS          2000UL  // self-reset check this long after a pump stop
 
 // VL53L4CD limits used to validate the reservoir geometry (datasheet DS13812)
 #define LEVEL_MAX_RANGE_MM           1200    // max ranging distance

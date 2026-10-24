@@ -73,6 +73,12 @@ static uint16_t g_polls          = 0;       // GPIO__TIO_HV_STATUS reads in the 
 static uint16_t g_pollFail       = 0;       // of which failed on I2C
 static uint8_t  g_pollErr        = 0;       // last failure: endTransmission() code, 0xFE = short read
 static uint8_t  g_lastHv         = 0xFF;    // last GPIO__TIO_HV_STATUS read successfully
+// Self-reset detection (sensor reboots on its own, e.g. on a transient from the pump switching)
+static uint8_t  g_refInt         = 0x20;    // SYSTEM__INTERRUPT as written by init()
+static bool     g_pumpCheck      = false;   // self-reset check pending after a pump stop
+static uint32_t g_pumpRuns       = 0;       // pump runs checked since boot
+static uint32_t g_pumpResets     = 0;       // of which ended with a self-reset
+static uint32_t g_selfResets     = 0;       // all self-resets since boot
 
 // 8-bit register read keeping the I2C result (the library returns 0xFF on a failed
 // read, which dataReady() takes as "not ready"). err: endTransmission() code, 0xFE = short read
@@ -138,6 +144,8 @@ static bool tryInit() {
         LOG_WARNING("Level sensor: setRangeTiming(%d) rejected", LEVEL_TIMING_BUDGET_MS);
     }
     g_tof.startContinuous();
+    uint8_t v, err;
+    if (readRegChecked(VL53L4CD::SYSTEM__INTERRUPT, v, err)) g_refInt = v;
     return true;
 }
 
@@ -212,6 +220,37 @@ static void retryInit(uint32_t now) {
     recoverBus();
 }
 
+static void startSeries();
+
+// A sensor reboot (supply or XSHUT transient) leaves it answering on I2C, but with
+// the default config and ranging stopped (seen as start=00 int=00 in the no-data
+// snapshot). SYSTEM__INTERRUPT is written once by init(), so a changed value means
+// the config is gone — re-init right away instead of waiting for a FAULT.
+// Returns true when a self-reset was detected
+static bool checkSelfReset(bool afterPump) {
+    uint8_t start, intr, err;
+    if (!readRegChecked(VL53L4CD::SYSTEM__INTERRUPT, intr, err)) return false;
+    if (intr == g_refInt) return false;
+    if (!readRegChecked(VL53L4CD::SYSTEM_START, start, err)) start = 0xFF;
+    g_selfResets++;
+    if (afterPump) g_pumpResets++;
+    uint32_t now = millis();
+    bool ok = tryInit();
+    // Capped in FAULT, where a sensor that keeps rebooting would hit this every series
+    logEvent(EV_WARN, g_state == LEVEL_SENSOR_OK || storeFaultEvent(),
+             "Level sensor: self-reset %s (start=%02X int=%02X), re-init %s; pump %lu/%lu, total %lu, last good %ld s",
+             afterPump ? "after pump" : "in series", start, intr, ok ? "OK" : "failed",
+             (unsigned long)g_pumpResets, (unsigned long)g_pumpRuns, (unsigned long)g_selfResets,
+             secondsSince(g_lastGoodMs, now));
+    if (!ok && g_state == LEVEL_SENSOR_OK) {
+        // Not answering after the reset — the regular FAULT retries take over
+        g_state = LEVEL_SENSOR_FAULT;
+        g_faultEvents = 0;
+    }
+    if (ok && g_collecting) startSeries();   // samples so far predate the re-init
+    return true;
+}
+
 static void startSeries() {
     g_collecting  = true;
     g_skipFirst   = true;
@@ -263,6 +302,9 @@ static void finishSeries() {
                  s.distance_mm, s.stddev_mm, s.sem_mm, s.samples, s.rejected,
                  s.signal_kcps, s.ambient_kcps);
     } else {
+        // No data at all from a sensor that answers: most likely a self-reset, re-initialized
+        // here — the series does not count as bad
+        if (s.samples == 0 && s.rejected == 0 && g_pollFail == 0 && checkSelfReset(false)) return;
         if (g_badSeries < 255) g_badSeries++;
         char st[64] = "";
         size_t len = 0;
@@ -351,6 +393,13 @@ void updateLevelSensor() {
         g_quiet         = true;
         g_pumpStopMs    = now;
         g_lastPumpStop  = now;
+        g_pumpCheck     = true;
+    }
+    // Switching the pump has been seen to reboot the sensor — check once it is off
+    if (g_pumpCheck && now - g_pumpStopMs >= LEVEL_PUMP_CHECK_MS) {
+        g_pumpCheck = false;
+        g_pumpRuns++;
+        checkSelfReset(true);
     }
     if (g_quiet) {
         if (now - g_pumpStopMs >= LEVEL_PUMP_QUIET_MS) {

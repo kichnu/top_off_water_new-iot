@@ -451,10 +451,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
         .status-main-wifi.wifi-on  .wifi-dot { color: var(--accent-green); }
         .status-main-wifi.wifi-off .wifi-dot { color: var(--text-muted); }
         .status-info {
-            display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-            padding: 1px 16px;
-            font-size: 0.7rem; color: var(--text-secondary);
-            font-family: 'Courier New', monospace; margin-top: 10px;
+            display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px;
+            color: var(--text-secondary); font-family: 'Courier New', monospace;
         }
         .status-info .si-sep { color: var(--text-muted); font-family: sans-serif; }
         .status-info.rtc-warn { border-color: rgba(251,191,36,0.35); }
@@ -996,21 +994,20 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         <span id="sensor1Badge" class="sub-off">Sensor: OFF</span>
                         <span class="sub-sep">•</span>
                         <span id="pumpBadge" class="sub-off">Pump: OFF</span>
-                        <span class="sub-sep" id="reservoirSep" style="display:none">•</span>
-                        <span id="reservoirAlarmBadge" style="display:none"></span>
+                        <span class="sub-sep">•</span>
+                        <span class="status-info" id="rtcItem">
+                            <span id="rtcTime">—</span><span id="rtcHint"></span>
+                            <span class="si-sep">•</span>
+                            <span id="freeHeap">—</span>
+                            <span class="si-sep">•</span>
+                            <span id="uptime">—</span>
+                        </span>
                     </div>
                 </div>
                 <div class="status-main-wifi wifi-off" id="wifiItem">
                     <span class="wifi-label">WiFi</span>
                     <span class="wifi-dot" id="wifiStatus">●</span>
                 </div>
-            </div>
-            <div class="status-info" id="rtcItem">
-                <span id="rtcTime">—</span><span id="rtcHint"></span>
-                <span class="si-sep">•</span>
-                <span id="freeHeap">—</span>
-                <span class="si-sep">•</span>
-                <span id="uptime">—</span>
             </div>
             </div>
 
@@ -1617,26 +1614,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     if (!data) return;
                     lastStatus = data;
 
-                    // Reserve alarm badges
-                    const hasReserveLow   = !!data.reserve_low;
-                    const hasReserveEmpty = !!data.reserve_empty;
-                    const reservoirSep    = document.getElementById("reservoirSep");
-                    const reservoirBadge  = document.getElementById("reservoirAlarmBadge");
-                    if (hasReserveEmpty) {
-                        reservoirSep.style.display   = '';
-                        reservoirBadge.style.display = '';
-                        reservoirBadge.className     = 'sub-danger';
-                        reservoirBadge.textContent   = '\u26a0 Reserve empty \u2014 refill the reservoir';
-                    } else if (hasReserveLow) {
-                        reservoirSep.style.display   = '';
-                        reservoirBadge.style.display = '';
-                        reservoirBadge.className     = 'sub-warn';
-                        reservoirBadge.textContent   = '\u26a0 Reserve range \u2014 \u2248 ' + data.res_portions + ' portions left';
-                    } else {
-                        reservoirSep.style.display   = 'none';
-                        reservoirBadge.style.display = 'none';
-                    }
-                    const hasLowResWarning = hasReserveLow;
+                    // Reserve state for the system badge
+                    const hasReserveEmpty  = !!data.reserve_empty;
+                    const hasLowResWarning = !!data.reserve_low;
                     updateReserveBar(data);
 
                     // Badges

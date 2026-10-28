@@ -141,7 +141,7 @@ bez automatycznego powrotu do Auto.
 - FRAM `ReserveTrack` (0x05C4): ostatni odczyt (ml, czas, źródło: czujnik / refill), pobrane od
   niego, przyczyna zatrzasku — restart (także nocny) kontynuuje od nich, zatrzask przeżywa
   restart.
-- GUI: w szacunku pasek jako obrys 2 px w kolorze strefy („Left: ≥ … (estimate)”), notatki: przyczyna alarmu, czas
+- GUI: w szacunku pasek jako obrys 2 px (każdy zakres w swoim kolorze, wnętrze lekko zabarwione) („Left: ≥ … (estimate)”), notatki: przyczyna alarmu, czas
   bez odczytu, czas do alarmu z EMA. `/api/status`: `reserve_empty` (zatrzask), `reserve_alarm`
   (kod 0–4), `reserve_alarm_text`, `reserve_no_reading`, `res_estimated`, `res_no_reading_s`,
   `res_avail_ml`, `res_hours_left`.

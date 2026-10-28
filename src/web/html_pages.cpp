@@ -780,12 +780,20 @@ const char* DASHBOARD_HTML = R"rawliteral(
             pointer-events: none;
         }
 
-        /* Estimated mode (no level reading): hatched fill at the minimum estimate */
-        .res-bar-wrap.is-estimated .res-bar-fill,
+        /* Estimated mode (no level reading): only an outline up to the minimum
+           estimate, in the zone color */
         .res-bar-wrap.is-estimated .res-bar-low-fill,
-        .res-bar-wrap.is-estimated .res-bar-alarm-fill {
-            background-image: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.35) 0 4px, transparent 4px 8px);
+        .res-bar-wrap.is-estimated .res-bar-alarm-fill { display: none; }
+
+        .res-bar-wrap.is-estimated .res-bar-fill {
+            background: transparent;
+            border: 2px solid var(--accent-blue);
+            border-radius: 7px;
+            box-sizing: border-box;
         }
+
+        .res-bar-wrap.is-estimated.zone-reserve .res-bar-fill { border-color: var(--accent-yellow); }
+        .res-bar-wrap.is-estimated.zone-alarm .res-bar-fill   { border-color: var(--accent-red); }
 
         .res-bar-alarm {
             position: absolute;

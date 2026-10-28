@@ -109,7 +109,7 @@ No level measurement during the calibration. The pump end is cut by a one-shot `
 ## Reserve (Source Water) Monitoring
 
 `src/hardware/reserve_controller.*` (see `docs/RESERVE_LEVEL_SENSOR_VL53L4CD.md`):
-- **Level sensor (information only).** Volume = reservoir floor area (`length_mm × width_mm`) × water height (`sensor_to_bottom_mm` − reading). The bottom 10% of the capacity up to the marker is a hidden safety bottom; the dashboard shows the part above it as a level bar with ml, % and the estimated number of portions. The bottom 30% of the usable capacity is the yellow reserve range (dashboard only, no buzzer). Expected error ~±2 cm (water surface reflections, field of view hitting the walls), so the sensor raises no alarms.
+- **Level sensor.** Volume = reservoir floor area (`length_mm × width_mm`) × water height (`sensor_to_bottom_mm` − reading); 100% = the marker. Two levels set in Settings, in % of the capacity and rounded up to whole portions: the reserve level (`reserve_pct`, default 30%, yellow range, warning only — no buzzer) and the alarm level (`alarm_pct`, default 15%, red range; at least 2 portions below the reserve level). Zones: OK → RESERVE → ALARM, or UNKNOWN without a valid reading. The dashboard shows a level bar with ml, % and the portions left above the alarm level. Expected error ~±2 cm (water surface reflections, field of view hitting the walls) — Settings warns when the alarm level keeps less than 30 mm of water (the largest jump between series seen in tests).
 - **No empty-reservoir stop yet.** The reservoir float switch was removed; a pump stop on a configurable ToF alarm level (with a fail-safe policy for sensor faults) is planned. Until then nothing stops the pump when the reservoir runs dry.
 
 ## Safety
@@ -192,7 +192,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
 | GET/POST | `/api/alg-config` | Get/set alarm-score zones and initial EMA |
 | GET/POST | `/api/level-events` | Level sensor event log kept in FRAM (boot, sensor self-resets detected after a pump run or in a no-data series and re-initialized at once, FAULT with the rejection breakdown, soft/XSHUT resets, bus recovery, recovery); GET returns plain text, POST clears it |
-| GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`); returns derived `ml_per_mm`, `capacity_ml`, `usable_ml`, `low_ml`, `hidden_ml` |
+| GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`) and levels (`reserve_pct`, `alarm_pct`); returns derived `ml_per_mm`, `capacity_ml`, `full_ml`, `reserve_ml`, `alarm_ml`, `alarm_mm` |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |
 

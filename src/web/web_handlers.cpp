@@ -199,15 +199,16 @@ void handleStatus(AsyncWebServerRequest* request) {
         ReserveView rv   = getReserveView(dose);
         json["res_configured"]    = isReservoirConfigSaved();
         json["res_reading"]       = rv.reading;
-        json["res_ml"]            = rv.ml;
-        json["res_portions"]      = rv.portions;
+        json["res_ml"]            = rv.ml;         // from the bottom
+        json["res_portions"]      = rv.portions;   // above the alarm level
         json["res_capacity_ml"]   = rv.capacityMl;
         json["res_capacity_portions"] = rv.capacityPortions;
         json["res_pct"]           = rv.pct;
         json["res_water_mm"]      = rv.waterMm;
         json["res_marker_mm"]     = getReservoirConfig().marker_level_mm;
-        json["res_zone"]          = (uint8_t)rv.zone;   // 0=ok 1=low 2=empty 3=unknown
-        json["res_low_ml"]        = rv.lowMl;   // yellow reserve range
+        json["res_zone"]          = (uint8_t)rv.zone;   // 0=ok 1=reserve 2=alarm 3=unknown
+        json["res_reserve_ml"]    = rv.reserveMl;   // yellow reserve range
+        json["res_alarm_ml"]      = rv.alarmMl;     // alarm level
         json["res_dose_ml"]       = dose;
         json["level_settling"]  = isLevelSettling();
 
@@ -757,11 +758,11 @@ static void sendReserveConfig(AsyncWebServerRequest* request) {
     doc["capacity_ml"]         = cap;
     doc["dose_ml"]             = dose;
     doc["full_ml"]             = lv.fullMl;     // rounded down to whole portions
-    doc["hidden_ml"]           = lv.hiddenMl;   // safety bottom, not shown in the monitor
-    doc["usable_ml"]           = lv.usableMl;
-    doc["low_ml"]              = lv.lowMl;
-    doc["low_pct"]             = RESERVE_LOW_PCT_FIXED;
-    doc["hidden_pct"]          = RESERVE_HIDDEN_PCT_FIXED;
+    doc["reserve_pct"]         = reservePct(c);
+    doc["alarm_pct"]           = alarmPct(c);
+    doc["reserve_ml"]          = lv.reserveMl;  // rounded up to whole portions
+    doc["alarm_ml"]            = lv.alarmMl;
+    doc["alarm_mm"]            = reservoirMlPerMm() > 0 ? lv.alarmMl / reservoirMlPerMm() : 0;
     const char* warn = reservoirConfigWarning(c);
     if (warn) doc["warning"] = warn;
     String resp; serializeJson(doc, resp);
@@ -783,13 +784,16 @@ void handleReserveConfig(AsyncWebServerRequest* request) {
         };
         // Clamp to the field width before validation so overflow can't wrap into range
         auto u16 = [](long v) -> uint16_t { return (uint16_t)constrain(v, 0L, 65535L); };
+        auto u8  = [](long v) -> uint8_t  { return (uint8_t)constrain(v, 1L, 255L); };   // 0 would mean "default"
 
         c.length_mm           = u16(getI("length_mm",           c.length_mm));
         c.width_mm            = u16(getI("width_mm",            c.width_mm));
         c.sensor_to_bottom_mm = u16(getI("sensor_to_bottom_mm", c.sensor_to_bottom_mm));
         c.marker_level_mm     = u16(getI("marker_level_mm",     c.marker_level_mm));
+        c.reserve_pct         = u8(getI("reserve_pct",          reservePct(c)));
+        c.alarm_pct           = u8(getI("alarm_pct",            alarmPct(c)));
 
-        const char* err = setReservoirConfig(c);
+        const char* err = setReservoirConfig(c, waterAlgorithm.getConfig().dose_ml);
         if (err) {
             JsonDocument doc;
             doc["success"] = false;

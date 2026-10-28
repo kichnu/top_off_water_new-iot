@@ -69,8 +69,8 @@ const char* startPumpCalibration(uint16_t doseMl) {
     if (isReserveEmpty())                    return "Reservoir empty — refill first";
     // Level sensor estimate (±2 cm) — checked only when there is a reading
     const ReserveView rv = getReserveView(doseMl);
-    if (rv.reading && rv.ml < (uint32_t)doseMl * (CAL_RUNS + 1)) {
-        return "Not enough water in the reservoir for 4 portions + 1 — refill first";
+    if (rv.reading && rv.portions < CAL_RUNS + 1) {
+        return "Not enough water above the alarm level for 4 portions + 1 — refill first";
     }
 
     setSystemState(false);   // Service Mode without the boot auto-enable timer

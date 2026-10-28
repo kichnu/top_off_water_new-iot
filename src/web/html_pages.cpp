@@ -741,8 +741,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         .res-note:empty { display: none; }
 
-        /* Source-water reserve: level bar from the level sensor (0 = hidden bottom,
-           100% = marker); the reserve range has its own (yellow) color */
+        /* Source-water reserve: level bar from the level sensor (0 = bottom,
+           100% = marker); the reserve range is yellow, the alarm range red */
         .res-bar-wrap {
             position: relative;
             height: 8px;
@@ -780,7 +780,25 @@ const char* DASHBOARD_HTML = R"rawliteral(
             pointer-events: none;
         }
 
-        .res-bar-wrap.zone-empty .res-bar-low-fill { background: var(--accent-red); }
+        .res-bar-alarm {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            background: rgba(239, 68, 68, 0.22);
+            pointer-events: none;
+        }
+
+        .res-bar-alarm-fill {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 0%;
+            background: var(--accent-red);
+            transition: width 0.3s;
+            pointer-events: none;
+        }
 
         /* ===== Algorithm parameters: one line on desktop, stacked on mobile ===== */
         .alg-inputs {
@@ -1048,6 +1066,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     <div class="res-bar-fill" id="resBarFill"></div>
                     <div class="res-bar-low" id="resBarLow"></div>
                     <div class="res-bar-low-fill" id="resBarLowFill"></div>
+                    <div class="res-bar-alarm" id="resBarAlarm"></div>
+                    <div class="res-bar-alarm-fill" id="resBarAlarmFill"></div>
                 </div>
                 <div class="res-meta">
                     <span id="resCapacity">&#8212;</span>
@@ -1165,6 +1185,12 @@ const char* DASHBOARD_HTML = R"rawliteral(
                             <label data-dim="D"><span class="dim-badge">D</span>Marker level mm (from bottom)
                                 <input type="number" id="resMarker" min="20" max="1150" step="1"></label>
                         </div>
+                    </div>
+                    <div class="alg-inputs" style="margin-top:10px;">
+                        <label>Reserve level % of capacity (warning)
+                            <input type="number" id="resReservePct" min="6" max="90" step="1"></label>
+                        <label>Alarm level % of capacity (5–50)
+                            <input type="number" id="resAlarmPct" min="5" max="50" step="1"></label>
                     </div>
                     <div id="resDerived" style="font-size:0.72rem;color:var(--text-secondary);margin-top:8px;"></div>
                     <div id="resWarning" style="display:none;color:#fbbf24;font-size:0.72rem;margin-top:6px;"></div>
@@ -1574,13 +1600,16 @@ const char* DASHBOARD_HTML = R"rawliteral(
             wrap.style.display = '';
             capEl.className = '';
 
-            const zones = ['zone-ok', 'zone-low', 'zone-empty', 'zone-unknown'];
+            const zones = ['zone-ok', 'zone-reserve', 'zone-alarm', 'zone-unknown'];
             wrap.className = 'res-bar-wrap ' + (zones[d.res_zone] || 'zone-unknown');
             const cap = d.res_capacity_ml || 1;
-            const lowPct = Math.min(100, d.res_low_ml * 100 / cap);
+            const lowPct = Math.min(100, d.res_reserve_ml * 100 / cap);
+            const alarmPct = Math.min(100, d.res_alarm_ml * 100 / cap);
             const fillPct = d.res_reading ? Math.min(100, d.res_pct) : 0;
             document.getElementById('resBarLow').style.width = lowPct + '%';
             document.getElementById('resBarLowFill').style.width = Math.min(fillPct, lowPct) + '%';
+            document.getElementById('resBarAlarm').style.width = alarmPct + '%';
+            document.getElementById('resBarAlarmFill').style.width = Math.min(fillPct, alarmPct) + '%';
             document.getElementById('resBarFill').style.width = fillPct + '%';
 
             capEl.textContent = 'Capacity: ' + fmtL(d.res_capacity_ml) + ' / ' + d.res_capacity_portions + ' doses';
@@ -1588,6 +1617,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             const notes = [];
             if (d.res_reading) {
                 leftEl.textContent = 'Left: \u2248 ' + fmtL(d.res_ml) + ' / ' + d.res_portions + ' doses';
+                if (d.res_zone === 2) notes.push('at the alarm level');
                 leftEl.className = d.res_zone === 2 ? 'is-alarm' : d.res_zone === 1 ? 'is-warn' : '';
             } else {
                 leftEl.textContent = 'Left: no reading';
@@ -1957,12 +1987,15 @@ const char* DASHBOARD_HTML = R"rawliteral(
             document.getElementById('resWidth').value        = d.width_mm;
             document.getElementById('resSensorBottom').value = d.sensor_to_bottom_mm;
             document.getElementById('resMarker').value       = d.marker_level_mm;
+            document.getElementById('resReservePct').value   = d.reserve_pct;
+            document.getElementById('resAlarmPct').value     = d.alarm_pct;
             document.getElementById('resDerived').textContent =
                 (d.saved ? '' : 'Defaults (not saved yet) \u2014 ') +
                 d.ml_per_mm.toFixed(1) + ' ml/mm \u2022 capacity ' + (d.capacity_ml / 1000).toFixed(2) + ' l' +
-                ' \u2022 usable ' + (d.usable_ml / d.dose_ml) + ' portions of ' + d.dose_ml + ' ml' +
-                ' (reserve ' + (d.low_ml / d.dose_ml) + ', ' + d.low_pct + '%)' +
-                ' \u2022 hidden safety bottom ' + d.hidden_ml + ' ml (' + d.hidden_pct + '%)';
+                ' = ' + (d.full_ml / d.dose_ml) + ' portions of ' + d.dose_ml + ' ml' +
+                ' \u2022 reserve ' + (d.reserve_ml / 1000).toFixed(2) + ' l (' + (d.reserve_ml / d.dose_ml) + ' portions)' +
+                ' \u2022 alarm ' + (d.alarm_ml / 1000).toFixed(2) + ' l (' + (d.alarm_ml / d.dose_ml) +
+                ' portions, ' + Math.round(d.alarm_mm) + ' mm)';
             var w = document.getElementById('resWarning');
             w.textContent = d.warning || '';
             w.style.display = d.warning ? '' : 'none';
@@ -1997,11 +2030,14 @@ const char* DASHBOARD_HTML = R"rawliteral(
             var v = function(id) { return parseInt(document.getElementById(id).value, 10); };
             var len = v('resLength'), wid = v('resWidth'), bottom = v('resSensorBottom');
             var marker = v('resMarker');
+            var resPct = v('resReservePct'), alarmPct = v('resAlarmPct');
 
             var err = '';
             if (isNaN(len) || len < 50 || len > 2000 || isNaN(wid) || wid < 50 || wid > 2000) err = 'Length/width: 50\u20132000 mm';
             else if (isNaN(bottom) || bottom < 70 || bottom > 1200)   err = 'Sensor \u2192 bottom: 70\u20131200 mm';
             else if (isNaN(marker) || marker < 20 || marker > bottom - 50) err = 'Marker level: 20 mm \u2026 (sensor \u2192 bottom \u2212 50 mm)';
+            else if (isNaN(alarmPct) || alarmPct < 5 || alarmPct > 50) err = 'Alarm level: 5\u201350 %';
+            else if (isNaN(resPct) || resPct <= alarmPct || resPct > 90) err = 'Reserve level: above the alarm level, max 90 %';
             if (err) { errEl.textContent = err; errEl.style.display = ''; return; }
 
             var btn = document.getElementById('resSaveBtn');
@@ -2010,7 +2046,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: 'length_mm=' + len + '&width_mm=' + wid + '&sensor_to_bottom_mm=' + bottom +
-                      '&marker_level_mm=' + marker
+                      '&marker_level_mm=' + marker + '&reserve_pct=' + resPct + '&alarm_pct=' + alarmPct
             })
             .then(function(r) { return r ? r.json() : Promise.reject('no response'); })
             .then(function(d) {

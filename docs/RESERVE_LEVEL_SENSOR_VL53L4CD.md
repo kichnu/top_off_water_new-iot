@@ -102,14 +102,20 @@ bez automatycznego powrotu do Auto.
 
 ## 7. Monitor poziomu (ATO Process Monitor) — wdrożone v5
 
-- Prosty pasek postępu: 0% = ukryte dno, 100% = znacznik; kreska = górna granica zakresu
-  rezerwy; kolor: niebieski / żółty (rezerwa) / czerwony (nic powyżej ukrytego dna).
-- Objętość = długość × szerokość × (czujnik → dno − odczyt); użytkowe ml = objętość − ukryte
-  dno (10% pojemności do znacznika, w pełnych porcjach); zakres rezerwy = 30% użytkowej.
+- Pasek: 0% = dno, 100% = znacznik; zakres rezerwy żółty, zakres alarmowy czerwony (słabe tło
+  na całej szerokości, pełny kolor tam, gdzie jest woda).
+- Objętość = długość × szerokość × (czujnik → dno − odczyt). Progi (2026-10-28, krok 2 planu
+  `AUDYT_I_PLAN_REZERWY_TOF_1.0.md`; ukryte dno 10% usunięte — zastąpione poziomem alarmowym):
+  rezerwa `reserve_pct` (domyślnie 30%) i poziom alarmowy `alarm_pct` (domyślnie 15%) — % pojemności
+  do znacznika, w górę do pełnych porcji; rezerwa ≥ alarm + 2 porcje. W FRAM w dawnym
+  `_reserved` (0 = domyślne). Ostrzeżenie w Settings, gdy alarm < 30 mm wody (skok czujnika).
+- Strefy `res_zone`: 0 OK, 1 REZERWA, 2 ALARM, 3 NIEZNANY. Porcje „Left” = ponad poziomem
+  alarmowym (tyle da się jeszcze dolać); kalibracja wymaga ≥ 4 + 1 takich porcji.
 - Tekst: „≈ N / M portions”, ml, %, wysokość wody / znacznik, wiek pomiaru, „settling after
   pump”. Brak ważnego odczytu → „no reading”.
-- Aktualizacja jak dotąd: serie co 10 s, cisza 2 min po pompie. Bez alarmów i buzzera —
-  w zakresie rezerwy żółty znaczek w statusie.
+- Aktualizacja jak dotąd: serie co 10 s, cisza 2 min po pompie. Buzzer tylko przy błędach
+  krytycznych (decyzja 2026-10-28) — rezerwa i alarm z czujnika: żółty status. Stop pompy na
+  poziomie alarmowym — krok 3.
 
 ## 8. Pływak rezerwy — usunięty (2026-10-25)
 
@@ -132,7 +138,8 @@ pływak). Zakres rezerwy z czujnika — bez buzzera.
 
 - `GET|POST /api/reserve-config` — wymiary i znacznik; wyliczane ml/mm, pojemność, progi.
 - `POST /api/pump/calibration` — `start&dose_ml`, `run`, `stop`, `confirm`, `cancel`.
-- `GET /api/status` — `res_*` (szacunek z czujnika), `reserve_low`, `reserve_empty`
+- `GET /api/status` — `res_*` (szacunek z czujnika; `res_reserve_ml`, `res_alarm_ml`, `res_zone`),
+  `reserve_low` (strefa REZERWA lub ALARM), `reserve_empty`
   (na razie zawsze false), `cal_*`.
 - Usunięte: `POST /api/reserve/refill`.
 

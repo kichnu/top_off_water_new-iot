@@ -14,9 +14,10 @@ ReserveView getReserveView(uint16_t doseMl) {
     uint32_t dose = doseMl ? doseMl : 1;
     const ReservoirLevels lv = reservoirLevels(dose);
 
-    v.capacityMl       = lv.usableMl;
-    v.lowMl            = lv.lowMl;
-    v.capacityPortions = lv.usableMl / dose;
+    v.capacityMl       = lv.fullMl;
+    v.reserveMl        = lv.reserveMl;
+    v.alarmMl          = lv.alarmMl;
+    v.capacityPortions = (lv.fullMl - lv.alarmMl) / dose;
 
     const LevelSeries& ls = getLastLevelSeries();
     v.reading = isReservoirConfigSaved() && getLevelSensorState() == LEVEL_SENSOR_OK &&
@@ -27,21 +28,20 @@ ReserveView getReserveView(uint16_t doseMl) {
     }
 
     float h = getReservoirConfig().sensor_to_bottom_mm - ls.distance_mm;
-    v.waterMm = h > 0 ? h : 0;
-    float total = v.waterMm * reservoirMlPerMm();
-    v.ml       = total > lv.hiddenMl ? (uint32_t)(total - lv.hiddenMl) : 0;
-    v.portions = v.ml / dose;
+    v.waterMm  = h > 0 ? h : 0;
+    v.ml       = (uint32_t)(v.waterMm * reservoirMlPerMm());
+    v.portions = v.ml > lv.alarmMl ? (v.ml - lv.alarmMl) / dose : 0;
     v.pct      = v.capacityMl ? v.ml * 100.0f / v.capacityMl : 0.0f;
 
-    if      (v.ml < dose)     v.zone = RESERVE_ZONE_EMPTY;
-    else if (v.ml <= v.lowMl) v.zone = RESERVE_ZONE_LOW;
-    else                      v.zone = RESERVE_ZONE_OK;
+    if      (v.ml <= lv.alarmMl)   v.zone = RESERVE_ZONE_ALARM;
+    else if (v.ml <= lv.reserveMl) v.zone = RESERVE_ZONE_RESERVE;
+    else                           v.zone = RESERVE_ZONE_OK;
     return v;
 }
 
 bool isReserveLow() {
     ReserveZone z = getReserveView(currentDose()).zone;
-    return z == RESERVE_ZONE_LOW || z == RESERVE_ZONE_EMPTY;
+    return z == RESERVE_ZONE_RESERVE || z == RESERVE_ZONE_ALARM;
 }
 
 void initReserveController() {

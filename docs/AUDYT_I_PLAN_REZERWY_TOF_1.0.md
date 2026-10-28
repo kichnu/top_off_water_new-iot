@@ -132,7 +132,10 @@ Kolejność 1–3 jest sztywna. Od 4 dalej można przestawiać.
 1. Porcje ręczne a limit dobowy: wliczać i blokować, czy wliczać (blokuje późniejsze auto), ale ręczne
    ograniczyć tylko kolejką? Czy porcje ręczne wolno uruchamiać w stanie ERROR?
 2. Ukryte dno 10 % zostaje pod poziomem alarmowym, czy poziom alarmowy je zastępuje?
+   Odp. (2026-10-28): zastępuje — procenty od pojemności do znacznika; domyślnie rezerwa 30 %,
+   alarm 15 %.
 3. Rezerwa: buzzer WARNING czy tylko GUI / panel?
+   Odp. (2026-10-28): buzzer tylko przy błędach krytycznych; rezerwa — GUI / panel.
 4. Pompa niekalibrowana: blokada auto czy tylko status?
 5. Brak odczytu od startu: auto zablokowane czy N porcji?
 6. Watchdog braku dolewki: k i T_min (propozycja 3 × typowy interwał, min. 12 h).

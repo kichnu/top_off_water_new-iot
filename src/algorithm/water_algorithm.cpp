@@ -27,6 +27,9 @@ WaterAlgorithm::WaterAlgorithm() {
     totalCycleCount     = 0;
     rolling24hVolumeMl  = 0;
     manualResetTs       = 0;
+    manualResetMs       = 0;
+    ramDoseCount        = 0;
+    ramDoseNext         = 0;
 
     config.dose_ml           = DEFAULT_DOSE_ML;
     config.daily_limit_ml    = DEFAULT_DAILY_LIMIT_ML;
@@ -237,10 +240,11 @@ void WaterAlgorithm::startAutoPump() {
         return;
     }
 
-    rolling24hVolumeMl = scanRolling24h();
-    if (rolling24hVolumeMl >= config.daily_limit_ml) {
-        LOG_WARNING("DAILY LIMIT PRE-CHECK: %d >= %d ml — dose skipped → ERROR",
-                    rolling24hVolumeMl, config.daily_limit_ml);
+    // Lookahead: the dose must fit in the limit, not only start below it
+    rolling24hVolumeMl = rolling24h();
+    if ((uint32_t)rolling24hVolumeMl + config.dose_ml > config.daily_limit_ml) {
+        LOG_WARNING("DAILY LIMIT PRE-CHECK: %d + %d > %d ml — dose skipped → ERROR",
+                    rolling24hVolumeMl, config.dose_ml, config.daily_limit_ml);
         startErrorSignal(ERROR_DAILY_LIMIT);
         return;
     }
@@ -272,10 +276,35 @@ void WaterAlgorithm::startAutoPump() {
 
 void WaterAlgorithm::finishPumpCycle() {
     uint32_t nowTs = getUnixTimestamp();
+    bool timeValid = isUnixTimeValid();
     time_t   t     = (time_t)nowTs;
     struct tm tmLocal;
     localtime_r(&t, &tmLocal);
     uint8_t hourOfDay = (uint8_t)tmLocal.tm_hour;
+
+    // The dose counts for the 24 h limit regardless of the clock
+    ramDoses[ramDoseNext] = { millis(), config.dose_ml };
+    ramDoseNext = (ramDoseNext + 1) % TOPOFF_HISTORY_SIZE;
+    if (ramDoseCount < TOPOFF_HISTORY_SIZE) ramDoseCount++;
+
+    if (!timeValid) {
+        // No interval, EMA or history record from a fake time; the next interval
+        // starts over (a huge interval after the clock returns would drop the
+        // score and mask an anomaly)
+        lastTopOffTimestamp = 0;
+        LOG_WARNING("CYCLE COMPLETE without a valid RTC time — EMA, interval and history skipped");
+        rolling24hVolumeMl = rolling24h();
+        if (rolling24hVolumeMl >= config.daily_limit_ml) {
+            LOG_WARNING("DAILY LIMIT: %d ml >= %d ml — entering ERROR state",
+                        rolling24hVolumeMl, config.daily_limit_ml);
+            startErrorSignal(ERROR_DAILY_LIMIT);
+            return;
+        }
+        currentState = STATE_LOGGING;
+        stateStartMs = millis();
+        cycleLogged  = true;
+        return;
+    }
 
     uint32_t intervalS = (lastTopOffTimestamp > 0 && nowTs > lastTopOffTimestamp)
                          ? (nowTs - lastTopOffTimestamp) : 0;
@@ -342,7 +371,7 @@ void WaterAlgorithm::finishPumpCycle() {
     saveEmaToFRAM();
     framBusy = false;
 
-    rolling24hVolumeMl = scanRolling24h();
+    rolling24hVolumeMl = rolling24h();
 
     bool dailyLimitHit = (rolling24hVolumeMl >= config.daily_limit_ml);
 
@@ -426,6 +455,26 @@ uint8_t WaterAlgorithm::calculateAlertLevel() const {
 // ============================================================
 // Rolling 24h
 // ============================================================
+
+uint16_t WaterAlgorithm::ramRolling24h() const {
+    uint32_t now     = millis();
+    uint32_t windowMs = config.history_window_s * 1000UL;
+    uint32_t total   = 0;
+    for (uint8_t i = 0; i < ramDoseCount; i++) {
+        const RamDose& d = ramDoses[i];
+        if (now - d.ms >= windowMs) continue;
+        if (manualResetMs && (int32_t)(d.ms - manualResetMs) < 0) continue;
+        total += d.ml;
+    }
+    return total > 65000u ? 65000u : (uint16_t)total;
+}
+
+uint16_t WaterAlgorithm::rolling24h() const {
+    uint16_t fram = scanRolling24h();
+    uint16_t ram  = ramRolling24h();
+    if (ram > fram) LOG_WARNING("Rolling 24h: RAM count %u ml > FRAM history %u ml — using RAM", ram, fram);
+    return ram > fram ? ram : fram;
+}
 
 uint16_t WaterAlgorithm::scanRolling24h() const {
     uint32_t nowTs    = getUnixTimestamp();
@@ -634,7 +683,8 @@ bool WaterAlgorithm::resetCycleHistory() {
 
 void WaterAlgorithm::resetRolling24h() {
     manualResetTs      = getUnixTimestamp();
-    rolling24hVolumeMl = scanRolling24h();
+    manualResetMs      = millis() | 1u;   // |1 — 0 means none
+    rolling24hVolumeMl = rolling24h();
     LOG_INFO("Rolling 24h manually reset — manualResetTs=%lu rolling=%d ml",
              manualResetTs, rolling24hVolumeMl);
 }

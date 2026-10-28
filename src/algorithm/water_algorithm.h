@@ -37,6 +37,14 @@ private:
     // ---- Rolling 24h (cache) ----
     uint16_t rolling24hVolumeMl;
     uint32_t manualResetTs;
+    uint32_t manualResetMs;   // millis() of the manual reset, 0 = none since boot
+
+    // Doses since boot by millis() — the 24 h limit does not depend on the RTC
+    // (the FRAM history is by unix time); the larger of the two counts
+    struct RamDose { uint32_t ms; uint16_t ml; };
+    RamDose  ramDoses[TOPOFF_HISTORY_SIZE];
+    uint8_t  ramDoseCount;
+    uint8_t  ramDoseNext;
 
     // ---- Konfiguracja (FRAM lub defaults) ----
     TopOffConfig config;
@@ -65,7 +73,9 @@ private:
 
     void    updateEMA(uint32_t intervalS, float rateMlH);
     uint8_t calculateAlertLevel() const;
-    uint16_t scanRolling24h() const;
+    uint16_t scanRolling24h() const;      // FRAM history by unix time
+    uint16_t ramRolling24h() const;       // doses since boot by millis()
+    uint16_t rolling24h() const;          // the larger of both
 
     void startErrorSignal(ErrorCode error);
     void checkResetButton();

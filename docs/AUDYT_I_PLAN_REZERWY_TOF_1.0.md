@@ -122,6 +122,10 @@ rozbrojenie alarmu anomalii po resecie w czerwonej strefie: 24 h albo do score <
 (decyzja 2026-10-28), restart nocny odkładany przy pompie / cyklu / sesji ręcznej / kalibracji.
 Krok 5 zrobiony w zmienionej postaci (odp. 6.1): dolewka ręczna tylko w Service Mode, bez blokad
 i wliczania; Service Mode ręczny 180 min; restart nocny odkładany także w Service Mode.
+Krok 6 zrobiony: limit sprawdzany przed dawką (`rolling + dose > limit`), walidacja limit ≥ 2 ×
+dawka (także przy starcie kalibracji nowej dawki), licznik 24 h = max(historia FRAM, dawki od
+startu w RAM wg `millis()`); cykl bez ważnego czasu RTC dolewa, ale bez EMA, interwału i rekordu
+historii (decyzja 2026-10-28 — zamiast blokady dolewek).
 
 ## 5. Weryfikacja
 

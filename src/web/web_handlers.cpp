@@ -548,6 +548,16 @@ void handleSetFillWaterMax(AsyncWebServerRequest* request) {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"Value must be 100-10000 ml\"}");
         return;
     }
+    // At least two doses a day — a smaller limit would stop every cycle
+    uint16_t dose = waterAlgorithm.getConfig().dose_ml;
+    if ((uint32_t)value < 2u * dose) {
+        JsonDocument err;
+        err["success"] = false;
+        err["error"]   = String("Daily limit must be at least 2 \u00d7 Single Dose (") + (2u * dose) + " ml)";
+        String resp; serializeJson(err, resp);
+        request->send(400, "application/json", resp);
+        return;
+    }
 
     TopOffConfig cfg = waterAlgorithm.getConfig();
     cfg.daily_limit_ml = (uint16_t)value;

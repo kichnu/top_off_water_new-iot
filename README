@@ -66,7 +66,8 @@ STATE_IDLE
 Any state → STATE_ERROR when:
   - the reservoir alarm is latched, or the next portion would go below the
     reservoir alarm level (ERROR_LOW_RESERVOIR)
-  - rolling 24h volume >= daily_limit_ml
+  - the next dose would exceed daily_limit_ml (rolling 24h + dose_ml >
+    daily_limit_ml, checked before the dose), or the limit was reached
   - alarm_score >= zone_yellow after a cycle (red alert)
 STATE_ERROR requires explicit Cycle Reset (web button, or the reset button
 held 3 s) — one reset for both. The error is kept in FRAM, so the midnight
@@ -120,7 +121,7 @@ No level measurement during the calibration. The pump end is cut by a one-shot `
 
 ## Safety
 
-- **Daily volume limit** (`daily_limit_ml`, default 2000 ml) — rolling 24h window; exceeding it → `STATE_ERROR`
+- **Daily volume limit** (`daily_limit_ml`, default 2000 ml, at least 2 × `dose_ml`) — rolling 24h window, checked before each dose so a dose never goes over it → `STATE_ERROR`. The count is the larger of the FRAM history (unix time) and a RAM log of the doses since boot (`millis()`), so a broken RTC cannot hide doses. A cycle without a valid RTC time (`isUnixTimeValid()`) still doses, but skips the EMA, interval and history record; the next interval starts over.
 - **Reservoir alarm level** — no portion below it (auto, manual, calibration); latched alarm with buzzer, kept in FRAM; fail-safe estimate without a level reading
 - **Midnight auto-restart** — firmware restarts at 00:00 local time daily (guarded: only after 30 min uptime, and only if RTC has a valid time); postponed while the pump runs, an ATO cycle, a manual session or a calibration is in progress
 - **Latched errors in FRAM** — ATO error and the anomaly alarm disarm time (`AlgErrorState`) survive restarts and power loss
@@ -197,7 +198,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/fill-water-max` | Get `dose_ml` and `daily_limit_ml` |
-| POST | `/api/set-fill-water-max` | Set daily volume limit |
+| POST | `/api/set-fill-water-max` | Set daily volume limit (`value`, 100–10000 ml, at least 2 × Single Dose) |
 | GET/POST | `/api/alg-config` | Get/set alarm-score zones and initial EMA |
 | GET/POST | `/api/level-events` | Level sensor event log kept in FRAM (boot, sensor self-resets detected after a pump run or in a no-data series and re-initialized at once, FAULT with the rejection breakdown, soft/XSHUT resets, bus recovery, recovery); GET returns plain text, POST clears it |
 | POST | `/api/reserve/refill` | "Reservoir refilled to the marker" — only while the level sensor is not reading (409 otherwise); restarts the estimate, clears the reservoir alarm and an `ERROR_LOW_RESERVOIR` |

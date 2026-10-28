@@ -65,6 +65,9 @@ static void computeResult() {
 const char* startPumpCalibration(uint16_t doseMl) {
     if (g_cal.phase != CAL_IDLE)             return "Calibration already in progress";
     if (doseMl < CAL_DOSE_MIN_ML || doseMl > CAL_DOSE_MAX_ML) return "Single Dose: 1–2000 ml";
+    if (2u * doseMl > waterAlgorithm.getConfig().daily_limit_ml) {
+        return "Single Dose must be at most half the daily limit — raise the limit first";
+    }
     if (!isReservoirConfigSaved())           return "Save the reservoir dimensions first";
     if (isPumpActive() || isDirectPumpMode()) return "Pump running — wait until it stops";
     if (isReserveEmpty())                    return "Reservoir alarm — refill first";

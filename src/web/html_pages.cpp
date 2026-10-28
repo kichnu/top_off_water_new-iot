@@ -1830,7 +1830,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 .then((data) => {
                     if (!data) return;
                     if (data.success) { loadDailyVolume(); }
-                    else console.error("Set daily limit failed:", data.error);
+                    else alert(data.error || "Set daily limit failed");
                 })
                 .catch((e) => console.error("Set daily limit error:", e));
         }

@@ -165,7 +165,7 @@ History/volumes:
 - `GET  /api/daily-volume` — rolling 24h stats
 - `POST /api/reset-daily-volume`
 - `GET  /api/fill-water-max` — daily_limit_ml and dose_ml
-- `POST /api/set-fill-water-max` — set daily_limit_ml
+- `POST /api/set-fill-water-max` — set daily_limit_ml (≥ 2 × dose_ml; checked before each dose: rolling + dose > limit → ERROR)
 - `GET|POST /api/alg-config` — alarm-score zones and initial EMA (EMA alpha/clamp, P1/P2 are constants)
 - `GET|POST /api/reserve-config` — reservoir geometry (length, width, sensor → bottom, marker level), reserve/alarm level %
 - `POST /api/reserve/refill` — "reservoir refilled" while the level sensor is not reading (restarts the estimate)

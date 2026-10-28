@@ -419,7 +419,14 @@ String getCurrentTimestamp() {
     return String(buffer);
 }
 
+static volatile bool g_timeValid = false;
+
+bool isUnixTimeValid() {
+    return g_timeValid;
+}
+
 unsigned long getUnixTimestamp() {
+    g_timeValid = false;
     if (!rtcInitialized) {
         return 1609459200;  // 2021-01-01 00:00:00 UTC
     }
@@ -465,6 +472,7 @@ unsigned long getUnixTimestamp() {
             return 1735689600;  // 2025-01-01 00:00:00 UTC
         }
         
+        g_timeValid = true;
         return now.unixtime();
     }
 }

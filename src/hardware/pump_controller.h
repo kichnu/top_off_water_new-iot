@@ -15,11 +15,12 @@ void stopPump();
 // Exact run time (ms) of the last finished run of any kind (not reset on read)
 uint32_t getLastPumpRunMs();
 
-// Manual dosing in portions — bypasses algorithm, system disable and daily limit,
-// not logged in the cycle history. Each ON adds one portion (getPortionMs()) to the
-// queue; portions are separated by a short pause. OFF finishes the running portion
-// and clears the queue. A new portion starts only when it fits above the reservoir
-// alarm level (reserveCanDose).
+// Manual dosing in portions — a deliberate on-site service action: Service Mode
+// only (the switch to Auto stops it), otherwise never blocked (algorithm state,
+// daily limit, reservoir level) and not counted anywhere (24 h volume, history,
+// EMA); only the reserve tracking subtracts the water. Each ON adds one portion
+// (getPortionMs()) to the queue; portions are separated by a short pause. OFF
+// finishes the running portion and clears the queue.
 #define MANUAL_PORTION_PAUSE_MS  5000
 #define MANUAL_QUEUE_MAX         20
 

@@ -122,15 +122,17 @@ void updatePumpController() {
         return;
     }
 
-    // Pause between manual portions — the next one starts only if it fits above the alarm level
+    // Manual dosing only in Service Mode — the switch to Auto stops it at once
+    if (directPumpMode && !isSystemDisabled()) {
+        LOG_WARNING("Manual dosing: Auto Mode — stopped");
+        stopPump();
+        return;
+    }
+
+    // Pause between manual portions
     if (directPumpMode && g_manualPause && millis() - g_pauseStartMs >= MANUAL_PORTION_PAUSE_MS) {
         g_manualPause = false;
-        if (!reserveCanDose()) {
-            LOG_WARNING("Manual dosing: no water above the alarm level for one more portion — remaining portions dropped");
-            endManualSession("reservoir at the alarm level");
-        } else {
-            startManualPortion();
-        }
+        startManualPortion();
         return;
     }
 
@@ -216,11 +218,11 @@ bool manualPortionAdd() {
         LOG_WARNING("Manual portion blocked — algorithm/calibration pump is running");
         return false;
     }
+    if (!isSystemDisabled()) {
+        LOG_WARNING("Manual portion blocked — Service Mode only");
+        return false;
+    }
     if (!directPumpMode) {
-        if (!reserveCanDose()) {
-            LOG_WARNING("Manual portion blocked — no water above the alarm level for one portion");
-            return false;
-        }
         directPumpMode = true;
         g_manualLeft   = 1;
         g_manualDone   = 0;

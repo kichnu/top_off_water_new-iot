@@ -258,12 +258,14 @@ void loop() {
     // is in progress — a cut cycle would miss the 24 h counter and the history
     if (g_restartAtTs > 0 && now > 1800000UL) {
         uint32_t nowTs = (uint32_t)getUnixTimestamp();
+        // Service Mode: the user may be servicing the aquarium — a restart would
+        // bring Auto back (no Service Mode after the midnight restart)
         bool busy = isPumpActive() || waterAlgorithm.isInCycle() || isDirectPumpMode() ||
-                    isPumpCalibrationActive();
+                    isPumpCalibrationActive() || isSystemDisabled();
         static bool deferLogged = false;
         if (nowTs >= g_restartAtTs && busy && !deferLogged) {
             deferLogged = true;
-            LOG_INFO("Daily restart postponed — pump / cycle / manual session / calibration in progress");
+            LOG_INFO("Daily restart postponed — pump / cycle / manual session / calibration / Service Mode");
         }
         if (nowTs >= g_restartAtTs && !busy) {
             Serial.println("=== DAILY RESTART: midnight reached ===");

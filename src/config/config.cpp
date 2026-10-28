@@ -26,7 +26,8 @@ const char* DEVICE_ID = "UNCONFIGURED_DEVICE";
 
 // ============== SYSTEM DISABLE/ENABLE ==============
 bool systemDisabled = true;   // Boot in Service Mode; auto-switch to Auto Mode after SERVICE_MODE_AUTO_ENABLE_MS
-unsigned long serviceBootStartMs = 0;  // Set in initNVS(); 0 = no boot timer active
+unsigned long serviceBootStartMs = 0;  // Service Mode timer start; 0 = no timer active
+static uint32_t serviceTimeoutMs  = SERVICE_MODE_AUTO_ENABLE_MS;
 
 // ============== LEGACY PUMP CONTROL (to be removed) ==============
 bool pumpGlobalEnabled = true;  // Default ON
@@ -46,7 +47,8 @@ void initNVS() {
         LOG_ERROR("Storage initialization failed!");
     }
     // Start Service Mode boot timer — auto-switch to Auto Mode after SERVICE_MODE_AUTO_ENABLE_MS
-    serviceBootStartMs = millis();
+    serviceBootStartMs = millis() | 1u;   // |1 — 0 means no timer
+    serviceTimeoutMs   = SERVICE_MODE_AUTO_ENABLE_MS;
     LOG_INFO("Service Mode boot timer started (%lu ms)", SERVICE_MODE_AUTO_ENABLE_MS);
 }
 
@@ -69,9 +71,11 @@ void saveVolumeToNVS() {
 
 // ============== SYSTEM DISABLE/ENABLE FUNCTIONS ==============
 
-void setSystemState(bool enabled) {
+void setSystemState(bool enabled, uint32_t timeoutMs) {
     systemDisabled = !enabled;
-    serviceBootStartMs = 0;  // cancel boot timer on any manual state change
+    // Any state change replaces the timer: Service Mode with a timeout starts a new one
+    serviceBootStartMs = (!enabled && timeoutMs) ? (millis() | 1u) : 0;
+    serviceTimeoutMs   = timeoutMs;
     if (enabled) {
         LOG_INFO("====================================");
         LOG_INFO("AUTO MODE — system enabled");
@@ -82,6 +86,7 @@ void setSystemState(bool enabled) {
         LOG_INFO("====================================");
         LOG_INFO("SERVICE MODE — system disabled");
         LOG_INFO("Algorithm will pause at safe point");
+        if (timeoutMs) LOG_INFO("Back to Auto Mode in %lu min", (unsigned long)(timeoutMs / 60000UL));
         LOG_INFO("====================================");
         LOG_INFO("");
     }
@@ -89,11 +94,11 @@ void setSystemState(bool enabled) {
 
 void checkServiceAutoEnable() {
     if (systemDisabled && serviceBootStartMs > 0) {
-        if (millis() - serviceBootStartMs >= SERVICE_MODE_AUTO_ENABLE_MS) {
+        if (millis() - serviceBootStartMs >= serviceTimeoutMs) {
             serviceBootStartMs = 0;
             systemDisabled = false;
             LOG_INFO("====================================");
-            LOG_INFO("AUTO MODE — boot Service Mode timeout elapsed");
+            LOG_INFO("AUTO MODE — Service Mode timeout elapsed (%lu min)", (unsigned long)(serviceTimeoutMs / 60000UL));
             LOG_INFO("Algorithm resuming normal operation");
             LOG_INFO("====================================");
             LOG_INFO("");
@@ -103,6 +108,12 @@ void checkServiceAutoEnable() {
 
 bool isSystemDisabled() {
     return systemDisabled;
+}
+
+uint32_t getServiceRemainingMs() {
+    if (!systemDisabled || serviceBootStartMs == 0) return 0;
+    uint32_t el = millis() - serviceBootStartMs;
+    return el < serviceTimeoutMs ? serviceTimeoutMs - el : 0;
 }
 
 // ============== LEGACY PUMP CONTROL (to be removed) ==============

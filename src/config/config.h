@@ -25,12 +25,16 @@ extern const IPAddress TRUSTED_PROXY_IP;
 extern bool systemDisabled;
 extern unsigned long serviceBootStartMs;
 
-#define SERVICE_MODE_AUTO_ENABLE_MS (15UL * 60UL * 1000UL)  // 15 min after boot
+#define SERVICE_MODE_AUTO_ENABLE_MS   (15UL * 60UL * 1000UL)    // after boot
+#define SERVICE_MODE_MANUAL_MS        (180UL * 60UL * 1000UL)   // switched on by the user (aquarium
+                                                                // service, e.g. water change — no ATO meanwhile)
 
 // System state functions (declare BEFORE any mode_config includes)
-void setSystemState(bool enabled);
+// serviceTimeoutMs — Service Mode returns to Auto after it; 0 = stays until switched
+void setSystemState(bool enabled, uint32_t serviceTimeoutMs = 0);
 bool isSystemDisabled();
 void checkServiceAutoEnable();
+uint32_t getServiceRemainingMs();   // 0 = Auto Mode or no auto return
 
 // Global pump control (LEGACY - kept for compatibility, will be removed)
 extern bool pumpGlobalEnabled;

@@ -60,10 +60,10 @@ Rolling 24h — łączny wolumen dolewek z ostatnich 24 godzin (porównaj z limi
 
 | Przycisk | Działanie |
 |---|---|
-| **Auto Mode** (zielony) / **Service Mode** (pomarańczowy) | Przełącza tryb pracy. W Service Mode scheduler i algorytm ATO są zatrzymane; manualne pompy działają normalnie. |
+| **Auto Mode** (zielony) / **Service Mode** (pomarańczowy) | Przełącza tryb pracy. W Service Mode algorytm ATO jest zatrzymany i tylko w nim działa dolewka ręczna. Włączony ręcznie wraca do Auto po 180 min (na czas serwisu akwarium, np. podmiany wody), po starcie po 15 min; przycisk pokazuje pozostałe minuty. Przejście do Auto przerywa dolewkę ręczną. |
 | **Kalkwasser OFF/ON** | Włącza/wyłącza scheduler kalkwassera. Stan przeżywa restart i Cycle Reset — celowo. |
 | **Alert Sound ON/OFF** | Wycisza aktualnie grający alarm audio. Mute resetuje się automatycznie gdy alarm ustępuje — przycisk powraca do "ON". |
-| **Pump OFF / Pump ON Xs** | Uruchamia pompę dolewki ręcznie na 60 sekund (z odliczaniem). Działa niezależnie od trybu Auto/Service. |
+| **Pump ON / OFF** | Dolewka ręczna porcjami (każde ON = +1 porcja, max 20, 5 s przerwy; OFF dokańcza bieżącą). Tylko w Service Mode; nie blokują jej błędy ATO, limit dobowy ani poziom rezerwy i nigdzie się nie wlicza. |
 | **Mixing Pump OFF/ON** | Ręczne sterowanie pompą miksera kalkwassera. |
 | **Peristaltic OFF/ON** | Ręczne sterowanie pompą perystaltyczną (kalkwasser). |
 | **Cycle Reset** | Resetuje **automatyczne** cykle ATO (czyści STATE_ERROR, przerywa DEBOUNCING/PUMPING wywołane przez czujnik/scheduler). Nie przerywa ręcznie uruchomionych pomp. |

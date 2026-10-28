@@ -36,9 +36,9 @@ Boot feedback: `buzzerPowerOn()` (1s tone at start of `setup()`), `buzzerOK()` (
 
 ## Operating Modes
 
-**Service Mode** (boot default) — ATO algorithm suspended; direct/manual pump control still works. Auto-switches to Auto Mode after 15 minutes (`SERVICE_MODE_AUTO_ENABLE_MS`), or immediately via dashboard toggle.
+**Service Mode** — ATO algorithm suspended; the only mode with manual dosing. Returns to Auto Mode by itself: 15 min after boot (`SERVICE_MODE_AUTO_ENABLE_MS`), 180 min after the user switched it on (`SERVICE_MODE_MANUAL_MS` — aquarium service, e.g. a water change, must not get an ATO dose), never when the pump calibration switched it on. The dashboard toggle shows the minutes left; `/api/status` `service_remaining_s`. The midnight restart is postponed while in Service Mode.
 
-**Auto Mode** — ATO algorithm active.
+**Auto Mode** — ATO algorithm active; switching to it stops a manual dosing session at once.
 
 Toggle via `POST /api/system-toggle` or the web dashboard.
 
@@ -75,7 +75,8 @@ only with a measured level >= alarm level + 1 portion, or with "Reservoir
 refilled" while the sensor is not reading.
 
 Direct/manual pump control bypasses this state machine entirely (separate
-code path in pump_controller, ignores system-disable and daily limit).
+code path in pump_controller; Service Mode only, ignores the ATO state and
+the daily limit).
 ```
 
 ### Manual Dosing in Portions
@@ -85,8 +86,8 @@ System Control → **Pump ON** / **OFF** (`/api/pump/direct-on`, `/api/pump/dire
 - Each ON press adds one portion to the queue (max `MANUAL_QUEUE_MAX` = 20); the first press starts pumping at once. A portion lasts the calibrated portion time (`getPortionMs()`).
 - Portions are separated by a fixed 5 s pause (`MANUAL_PORTION_PAUSE_MS`) — it only marks the portion-wise pumping.
 - OFF finishes the running portion and drops the rest of the queue; OFF during a pause ends the session at once. Emergency stop (`/api/pump/stop`) cuts the running portion immediately.
-- Manual portions bypass the algorithm, Service Mode and the daily limit; they are not counted in the 24 h volume and not logged in the cycle history (they would distort the EMA).
-- Start is blocked while a pump calibration is running, and every portion (the first one and each one from the queue) starts only if it fits above the reservoir alarm level. While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
+- A deliberate on-site service action: **Service Mode only** (`direct-on` returns 409 in Auto Mode, the GUI button is disabled; switching to Auto stops the session at once). Otherwise never blocked — not by the ATO state (errors included), the daily limit or the reservoir level — and not counted anywhere (24 h volume, cycle history, EMA). Only the reserve tracking subtracts the pumped water.
+- Start is blocked while a pump calibration is running. While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
 
 ### EMA / Alarm Score
 
@@ -178,14 +179,14 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET/POST | `/api/system-toggle` | Toggle Auto Mode / Service Mode |
+| GET/POST | `/api/system-toggle` | Toggle Auto Mode / Service Mode (Service Mode from here returns to Auto after 180 min) |
 | POST | `/api/system-reset` | Reset ATO state machine to IDLE, clear ERROR |
 
 ### Pump Control
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/pump/direct-on` | Manual dosing: add one portion to the queue (starts at once when idle); returns `portions_left` |
+| POST | `/api/pump/direct-on` | Manual dosing (Service Mode only, 409 otherwise): add one portion to the queue (starts at once when idle); returns `portions_left` |
 | POST | `/api/pump/direct-off` | Manual dosing: finish the running portion, drop the queue |
 | POST | `/api/pump/calibration` | Guided portion calibration: `action=start&dose_ml=N`, `run`, `stop`, `confirm`, `cancel`; progress/result in `/api/status` (`cal_*`) |
 | POST | `/api/pump/stop` | Emergency stop |

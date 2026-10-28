@@ -23,7 +23,7 @@ S — średnie, N — niskie.
 
 | # | Waga | Problem | Miejsce | Propozycja |
 |---|---|---|---|---|
-| K1 | K | Ręczne porcje omijają blokady. Nie sprawdzają stanu ERROR, limitu dobowego ani `pumpGlobalEnabled` (`startManualPortion()` pisze wprost na pin). Nie trafiają do licznika 24 h. Kolejka 20 × 150 ml = 3 l > domyślny limit 2 l. Po ERROR z powodu podejrzenia wycieku można dalej dolewać ręcznie. | `pump_controller.cpp:50`, `:206`; `web_handlers.cpp:276`; `water_algorithm.cpp:424` | Porcje ręczne zapisywać do ring buffera z flagą `FLAG_MANUAL` (jeden rekord na sesję albo na porcję). Wliczać je do `scanRolling24h()`, ale pomijać w EMA i w `loadLastTopOffRecord()` (interwał i `rateDoseMl`). Przed każdą porcją: poziom alarmowy (sekcja 3) i `rolling + dose ≤ limit` (albo osobny limit sesji — pytanie 6.1). |
+| K1 | K | Ręczne porcje omijają blokady. Nie sprawdzają stanu ERROR, limitu dobowego ani `pumpGlobalEnabled` (`startManualPortion()` pisze wprost na pin). Nie trafiają do licznika 24 h. Kolejka 20 × 150 ml = 3 l > domyślny limit 2 l. Po ERROR z powodu podejrzenia wycieku można dalej dolewać ręcznie. | `pump_controller.cpp:50`, `:206`; `web_handlers.cpp:276`; `water_algorithm.cpp:424` | Porcje ręczne zapisywać do ring buffera z flagą `FLAG_MANUAL` (jeden rekord na sesję albo na porcję). Wliczać je do `scanRolling24h()`, ale pomijać w EMA i w `loadLastTopOffRecord()` (interwał i `rateDoseMl`). Przed każdą porcją: poziom alarmowy (sekcja 3) i `rolling + dose ≤ limit` (albo osobny limit sesji — pytanie 6.1). **Zmienione decyzją 2026-10-28 (odp. 6.1): tylko Service Mode, bez blokad i bez wliczania.** |
 | K2 | K | Brak stopu przy pustym zbiorniku. Pływak jest wyłączony, więc `isReserveEmpty()` zawsze zwraca false, a `ERROR_LOW_RESERVOIR` nigdy nie wystąpi. | `reserve_controller.cpp`, `water_algorithm.cpp:230` | Sekcja 3. |
 | K3 | K | Brak alarmu „za długo bez dolewki”. Pływak sumpa ma `INPUT_PULLUP`, LOW = brak wody. Przerwany przewód lub pływak zablokowany w górze daje HIGH, czyli „woda OK”: pompa nigdy nie rusza i nic nie alarmuje. Sump opada, zasolenie rośnie. | `water_sensors.cpp` | Watchdog: czas od ostatniej dolewki (auto) > `max(k × ema_interval_s, T_min)` (np. k = 3, T_min = 12 h) → alarm `NO_TOPOFF` (P2, buzzer WARNING, bez blokady). Kasuje się sam przy następnej dolewce. |
 | W1 | W | Zatrzaśnięte błędy żyją tylko w RAM. Kasuje je nocny restart (codziennie o północy) i każdy zanik zasilania. Po restarcie `alarmArmed = true`, więc przy RED_ALERT wykona się jeszcze jedna dawka, zanim błąd wróci. Restart w trakcie pompowania: `stopPump()` bez `finishPumpCycle()`, więc dawka nie trafia do licznika 24 h. | `main.cpp:255–266`, `water_algorithm.cpp:512` | `lastError` (+ `alarmArmed`) zapisywać w FRAM, przywracać w `initFromFRAM()`. Restart nocny odkładać, gdy `isInCycle()`, trwa sesja ręczna lub kalibracja. |
@@ -105,7 +105,7 @@ Każdy krok musi się budować (`pio run -e seeed_xiao_esp32c3`) i kończyć oso
 2. Ustawienia `reserve_pct` / `alarm_pct` + nowe strefy w API i GUI (jeszcze bez stopu).
 3. Stop na poziomie alarmowym + polityka awarii czujnika + `LEVEL_SENSOR_FAULT` (K2).
 4. Persystencja błędów w FRAM, jeden reset, przycisk z przytrzymaniem, odroczony restart nocny (W1–W3).
-5. Ręczne porcje: blokady i licznik 24 h (K1).
+5. Ręczne porcje (K1) — wg odp. 6.1: tylko w Service Mode, Service Mode ręczny 180 min.
 6. Limit dobowy z lookahead i walidacją względem dawki (W5); flaga `time_valid` (S3).
 7. Watchdog braku dolewki `NO_TOPOFF` (K3).
 8. Mutex I2C / cache w handlerach (W4) — po teście z sekcji 2 albo wcześniej, jeśli logi wskażą
@@ -120,6 +120,8 @@ Postęp (2026-10-28): kroki 1–3 zrobione i sprawdzone na sprzęcie (pasek, pro
 `resetSystem()` dla GUI i przycisku, przycisk — przytrzymanie 3 s + 2 krótkie piknięcia,
 rozbrojenie alarmu anomalii po resecie w czerwonej strefie: 24 h albo do score < zone_yellow
 (decyzja 2026-10-28), restart nocny odkładany przy pompie / cyklu / sesji ręcznej / kalibracji.
+Krok 5 zrobiony w zmienionej postaci (odp. 6.1): dolewka ręczna tylko w Service Mode, bez blokad
+i wliczania; Service Mode ręczny 180 min; restart nocny odkładany także w Service Mode.
 
 ## 5. Weryfikacja
 
@@ -137,6 +139,12 @@ rozbrojenie alarmu anomalii po resecie w czerwonej strefie: 24 h albo do score <
 
 1. Porcje ręczne a limit dobowy: wliczać i blokować, czy wliczać (blokuje późniejsze auto), ale ręczne
    ograniczyć tylko kolejką? Czy porcje ręczne wolno uruchamiać w stanie ERROR?
+   Odp. (2026-10-28): porcje ręczne to świadoma dolewka serwisowa operatora — nigdzie nie wliczane
+   (poza odejmowaniem wody w śledzeniu rezerwy) i nieblokowane w żadnym stanie, także przy
+   poziomie alarmowym; działają tylko w Service Mode, przejście do Auto je przerywa. Service Mode
+   włączony ręcznie wraca do Auto po 180 min (serwis akwarium / podmiana wody), po starcie po 15 min.
+   **Do zrobienia po wdrożeniu `home_display-iot`:** usunąć dolewkę ręczną z GUI WWW — ma być
+   działaniem tylko na miejscu (panel), dla spójności logiki bezpieczeństwa akwarium.
 2. Ukryte dno 10 % zostaje pod poziomem alarmowym, czy poziom alarmowy je zastępuje?
    Odp. (2026-10-28): zastępuje — procenty od pojemności do znacznika; domyślnie rezerwa 30 %,
    alarm 15 %.

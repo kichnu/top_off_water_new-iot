@@ -147,6 +147,7 @@ void handleStatus(AsyncWebServerRequest* request) {
     // SYSTEM DISABLE STATUS (NEW)
     // ============================================
     json["system_disabled"] = isSystemDisabled();
+    json["service_remaining_s"] = getServiceRemainingMs() / 1000;   // 0 = Auto or no auto return
     
     
     // ============================================
@@ -290,9 +291,11 @@ void handleDirectPumpOn(AsyncWebServerRequest* request) {
         return;
     }
 
-    if (!isDirectPumpMode() && !reserveCanDose()) {
-        request->send(400, "application/json",
-            "{\"success\":false,\"error\":\"No water above the alarm level for one portion — refill the reservoir\"}");
+    // Manual dosing is a deliberate on-site service action: Service Mode only,
+    // otherwise no checks (algorithm state, limits, reservoir level)
+    if (!isSystemDisabled()) {
+        request->send(409, "application/json",
+            "{\"success\":false,\"error\":\"Manual dosing only in Service Mode\"}");
         return;
     }
     if (isPumpCalibrationActive()) {
@@ -397,7 +400,8 @@ void handleSystemToggle(AsyncWebServerRequest* request) {
             return;
         }
         bool currentlyDisabled = isSystemDisabled();
-        setSystemState(currentlyDisabled);  // toggle
+        // Service Mode from the user (aquarium service) returns to Auto after 180 min
+        setSystemState(currentlyDisabled, SERVICE_MODE_MANUAL_MS);  // toggle
 
         JsonDocument json;
         json["success"] = true;

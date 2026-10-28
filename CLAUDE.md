@@ -149,11 +149,11 @@ Authentication:
 
 System:
 - `GET  /api/status` — full system status JSON
-- `GET|POST /api/system-toggle` — enable/disable system (Service Mode auto-re-enables after 15 min)
+- `GET|POST /api/system-toggle` — enable/disable system (Service Mode from here returns to Auto after 180 min)
 - `POST /api/system-reset` — reset ATO state machine
 
 ATO pump:
-- `POST /api/pump/direct-on` — manual dosing: +1 portion to the queue (max 20, 5 s pause between portions)
+- `POST /api/pump/direct-on` — manual dosing, Service Mode only: +1 portion to the queue (max 20, 5 s pause between portions)
 - `POST /api/pump/direct-off` — manual dosing: finish the running portion, clear the queue
 - `POST /api/pump/stop` — emergency stop
 - `GET  /api/pump-settings` — `volume_per_second` (derived from the calibration)
@@ -194,12 +194,12 @@ Credentials loaded at boot from AES-256 encrypted FRAM. Fallback hardcoded value
 
 ### System Disable/Enable
 
-Boots in Service Mode (`systemDisabled = true`), auto-switches to Auto Mode after 15 minutes (`SERVICE_MODE_AUTO_ENABLE_MS`). Functions in `config.h`:
-- `setSystemState(bool enabled)`
-- `isSystemDisabled()`
+Boots in Service Mode (`systemDisabled = true`), auto-switches to Auto Mode after 15 minutes (`SERVICE_MODE_AUTO_ENABLE_MS`); Service Mode switched on by the user returns after 180 min (`SERVICE_MODE_MANUAL_MS`), the calibration one never. Functions in `config.h`:
+- `setSystemState(bool enabled, uint32_t serviceTimeoutMs = 0)`
+- `isSystemDisabled()`, `getServiceRemainingMs()`
 - `checkServiceAutoEnable()`
 
-When system is disabled, WaterAlgorithm stops immediately (direct/manual pump control still works).
+When system is disabled, WaterAlgorithm stops immediately. Manual dosing works only in Service Mode and is stopped by the switch to Auto.
 
 ### POST Body Parameters
 

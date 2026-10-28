@@ -93,10 +93,10 @@ bez automatycznego powrotu do Auto.
   pompowania porcjami; `portion_pause_s` z FRAM nieużywane.
 - OFF dokańcza bieżącą porcję i zeruje kolejkę; OFF w przerwie kończy od razu. Emergency stop
   (`/api/pump/stop`) przerywa porcję natychmiast.
-- Blokada startu: trwająca kalibracja; każda porcja (pierwsza i kolejne z kolejki) startuje tylko,
-  gdy mieści się ponad poziomem alarmowym (`reserveCanDose()`), inaczej reszta kolejki odpada.
-- Porcje ręczne omijają algorytm, Service Mode i limit dobowy; nie liczą się do „Added in 24h”
-  i nie trafiają do historii cykli (zaburzałyby EMA).
+- Tylko w Service Mode (decyzja 2026-10-28: świadoma dolewka serwisowa operatora na miejscu);
+  przejście do Auto przerywa sesję. Poza tym bez blokad (stan ATO, limit, poziom rezerwy) i bez
+  wliczania (24 h, historia, EMA); tylko śledzenie rezerwy odejmuje wodę. Blokada startu:
+  trwająca kalibracja.
 - W trakcie sesji (porcje + przerwy) cykl ATO jest odkładany, kalibracja nie startuje.
 - GUI: „Portion 2/5” / „Pause 2/5”; `/api/status`: `direct_pump_mode`, `manual_left`
   (z bieżącą), `manual_done`, `manual_pause`.

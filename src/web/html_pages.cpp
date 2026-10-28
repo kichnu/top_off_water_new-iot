@@ -1353,7 +1353,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 });
         }
 
-        function updateSystemToggleButton(enabled) {
+        // remainingS — Service Mode auto return to Auto (0 / undefined = none shown)
+        function updateSystemToggleButton(enabled, remainingS) {
             const btn = document.getElementById("systemToggleBtn");
             if (!btn) return;
 
@@ -1361,7 +1362,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 btn.textContent = "Auto Mode";
                 btn.className = "btn btn-primary";
             } else {
-                btn.textContent = "Service Mode";
+                btn.textContent = remainingS > 0
+                    ? "Service Mode (" + Math.ceil(remainingS / 60) + " min)"
+                    : "Service Mode";
                 btn.className = "btn btn-service";
             }
         }
@@ -1433,6 +1436,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 btn.className = "btn btn-off";
                 off.disabled = true;
             }
+            // Manual dosing only in Service Mode (on-site service action)
+            btn.disabled = !d.system_disabled;
+            btn.title = d.system_disabled ? "Each press adds one portion" : "Manual dosing only in Service Mode";
         }
 
         // ============================================
@@ -1741,7 +1747,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     // System toggle sync
                     if (typeof data.system_disabled !== 'undefined') {
                         systemEnabled = !data.system_disabled;
-                        updateSystemToggleButton(!data.system_disabled);
+                        updateSystemToggleButton(!data.system_disabled, data.service_remaining_s);
                     }
 
                     // Sync manual pump button with actual pump state
@@ -1769,7 +1775,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     document.getElementById("freeHeap").textContent = (data.free_heap / 1024).toFixed(1) + " KB";
                     document.getElementById("uptime").textContent = formatUptime(data.uptime);
 
-                    // Note: manualPumpBtn is NOT disabled when system_disabled — direct pump bypasses system state
+                    // manualPumpBtn: enabled only in Service Mode (updatePumpButton)
 
                     updateCalibration(data);
 

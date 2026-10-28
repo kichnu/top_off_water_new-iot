@@ -35,6 +35,7 @@ void setSystemState(bool enabled, uint32_t serviceTimeoutMs = 0);
 bool isSystemDisabled();
 void checkServiceAutoEnable();
 uint32_t getServiceRemainingMs();   // 0 = Auto Mode or no auto return
+bool isBootServiceMode();           // Service Mode from the boot timer (not the user)
 
 // Global pump control (LEGACY - kept for compatibility, will be removed)
 extern bool pumpGlobalEnabled;

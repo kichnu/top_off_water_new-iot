@@ -95,10 +95,10 @@ struct PumpCycle {
 // Reserve tracking (ReserveTrack: last level reading, water pumped since, alarm latch) — 16 bytes
 #define FRAM_ADDR_RESERVE_TRACK     0x05C4   // 16 bytes — ReserveTrack struct (0x05C4–0x05D3)
 #define FRAM_ADDR_RESERVE_CHKSUM    0x05D4   // 2 bytes — checksum
-// ATO error latch + anomaly alarm disarm time (AlgErrorState) — 8 bytes
-#define FRAM_ADDR_ALG_ERROR         0x05D6   // 8 bytes — AlgErrorState struct (0x05D6–0x05DD)
-#define FRAM_ADDR_ALG_ERROR_CHKSUM  0x05DE   // 2 bytes — checksum
-// 0x05E0–0x05FF: free
+// ATO error latch, anomaly alarm disarm time, no-top-off watchdog (AlgErrorState) — 12 bytes
+#define FRAM_ADDR_ALG_ERROR         0x05D6   // 12 bytes — AlgErrorState struct (0x05D6–0x05E1)
+#define FRAM_ADDR_ALG_ERROR_CHKSUM  0x05E2   // 2 bytes — checksum
+// 0x05E4–0x05FF: free
 
 // Ring buffer rekordów dolewek (TopOffRecord, 20 bajtów każdy)
 #define TOPOFF_HISTORY_SIZE         60       // Maksymalnie 60 rekordów (60×20=1200 bajtów)

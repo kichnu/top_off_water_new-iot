@@ -296,8 +296,10 @@ void loop() {
         updatePumpController();
 
         // Buzzer — critical only: every ATO error (state stays until reset from the
-        // GUI) and the reservoir alarm level; the reserve range is GUI-only
-        if (isReserveEmpty() || waterAlgorithm.getState() == STATE_ERROR) {
+        // GUI), the reservoir alarm level and 24 h without a top-off; the reserve
+        // range is GUI-only
+        if (isReserveEmpty() || waterAlgorithm.getState() == STATE_ERROR ||
+            waterAlgorithm.isNoTopOffAlarm()) {
             setBuzzerMode(BUZZER_ALARM);
         } else {
             setBuzzerMode(BUZZER_OFF);

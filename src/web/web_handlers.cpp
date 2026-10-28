@@ -260,6 +260,8 @@ void handleStatus(AsyncWebServerRequest* request) {
         json["alarm_score"]   = ema.alarm_score;
         json["alarm_armed"]   = waterAlgorithm.isAlarmArmed();
         json["alarm_disarmed_until"] = waterAlgorithm.getDisarmUntilTs();   // unix, 0 = armed
+        json["no_topoff_alarm"]      = waterAlgorithm.isNoTopOffAlarm();    // critical, 24 h without a top-off
+        json["no_topoff_ref"]        = waterAlgorithm.getWatchdogRefTs();   // unix, watchdog counts from it
         uint8_t zone = 0;
         if (ema.alarm_score >= cfg.zone_yellow)      zone = 2;
         else if (ema.alarm_score >= cfg.zone_green)  zone = 1;

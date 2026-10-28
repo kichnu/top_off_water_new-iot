@@ -58,6 +58,14 @@ private:
     bool     alarmArmed;
     uint32_t disarmUntilTs;   // unix time, 0 = armed
 
+    // ---- No-top-off watchdog ----
+    // Counts from the last auto dose, restarted at the end of a period in which
+    // the ATO could not dose (user Service Mode, ERROR, reservoir alarm); the boot
+    // Service Mode (every midnight restart) does not restart it
+    uint32_t wdRefTs;         // unix time, 0 = not set yet
+    bool     wdWasActive;
+    bool     noTopOffAlarm;
+
     // ---- Obsługa błędów ----
     ErrorCode lastError;
 
@@ -81,6 +89,7 @@ private:
     void checkResetButton();
     void saveErrorState();
     void loadErrorState();
+    void checkNoTopOffWatchdog();
 
     void loadConfigFromFRAM();
     void loadEmaFromFRAM();
@@ -118,6 +127,10 @@ public:
     // ---- Alarm hystereza ----
     bool     isAlarmArmed()     const { return alarmArmed; }
     uint32_t getDisarmUntilTs() const { return disarmUntilTs; }
+
+    // ---- No-top-off watchdog (critical alarm, no blocking) ----
+    bool     isNoTopOffAlarm()  const { return noTopOffAlarm; }
+    uint32_t getWatchdogRefTs() const { return wdRefTs; }
 
     // ---- Reset / odzyskiwanie ----
     // The only reset (GUI and button): error cleared, pump stopped, reserve alarm

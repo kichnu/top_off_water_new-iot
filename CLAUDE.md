@@ -116,8 +116,8 @@ Defined in `hardware/fram_controller.h`:
 - `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
 - `0x05A2-0x05C3`: ReservoirConfig incl. PumpCalibration (32B + 2B checksum), magic=0xB3
 - `0x05C4-0x05D5`: ReserveTrack (16B + 2B checksum) — last level reading, water pumped since, alarm latch, magic=0xC5
-- `0x05D6-0x05DF`: AlgErrorState (8B + 2B checksum) — latched ATO error, anomaly alarm disarm time, magic=0xE7
-- `0x05E0-0x05FF`: free
+- `0x05D6-0x05E3`: AlgErrorState (12B + 2B checksum) — latched ATO error, anomaly alarm disarm time, no-top-off watchdog reference, magic=0xE8
+- `0x05E4-0x05FF`: free
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 - `0x1100-0x290F`: Level sensor event log (16B header + 48 × 128B), diagnostics
 

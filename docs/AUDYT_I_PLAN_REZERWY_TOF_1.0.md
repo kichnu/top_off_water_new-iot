@@ -126,6 +126,10 @@ Krok 6 zrobiony: limit sprawdzany przed dawką (`rolling + dose > limit`), walid
 dawka (także przy starcie kalibracji nowej dawki), licznik 24 h = max(historia FRAM, dawki od
 startu w RAM wg `millis()`); cykl bez ważnego czasu RTC dolewa, ale bez EMA, interwału i rekordu
 historii (decyzja 2026-10-28 — zamiast blokady dolewek).
+Krok 7 zrobiony: watchdog `NO_TOPOFF` 24 h (alarm krytyczny, buzzer, bez blokady); okres bez
+możliwości dolewki (ręczny Service Mode, ERROR, alarm rezerwy) zaczyna 24 h od nowa po swoim
+końcu, Service Mode po starcie nie (restart nocny nie zeruje); punkt odniesienia w FRAM
+(`AlgErrorState` rozszerzony do 12 B, magic 0xE8); kasowanie: następna dolewka albo reset.
 
 ## 5. Weryfikacja
 
@@ -162,6 +166,9 @@ historii (decyzja 2026-10-28 — zamiast blokady dolewek).
    niedziałającym czujniku; poziom alarmowy = alarm krytyczny z buzzerem; brak odczytu 30 min —
    żółty status. Szczegóły: `RESERVE_LEVEL_SENSOR_VL53L4CD.md` §7a.
 6. Watchdog braku dolewki: k i T_min (propozycja 3 × typowy interwał, min. 12 h).
+   Odp. (2026-10-28): stałe 24 h bez dolewki auto (bez wyliczania z EMA) → alarm krytyczny z
+   buzzerem, bez blokady. Uwaga: domyślne 20 ml/h to tylko seed EMA; faktyczne zużycie wg
+   użytkownika 2–4 l/dobę — domyślny `daily_limit_ml` 2000 ml jest za niski, sprawdzić ustawienie.
 
 ## 7. Raport zwrotny do `home_display-iot`
 

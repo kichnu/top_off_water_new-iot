@@ -1739,10 +1739,13 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     // Badges
                     updateSensorBadge("sensor1Badge", data.sensor_active);
                     updatePumpBadge("pumpBadge", data.pump_active, data.pump_attempt || 0);
-                    updateSystemBadge("systemBadge", data.system_error || hasReserveEmpty, data.system_disabled, hasLowResWarning);
+                    updateSystemBadge("systemBadge", data.system_error || hasReserveEmpty || !!data.no_topoff_alarm,
+                                      data.system_disabled, hasLowResWarning);
 
                     // Process status
-                    document.getElementById("processDescription").textContent = data.state_description || "IDLE - Waiting for sensors";
+                    document.getElementById("processDescription").textContent =
+                        (data.no_topoff_alarm ? "NO TOP-OFF FOR 24 h \u2014 check the sump float, then Cycle Reset \u00b7 " : "") +
+                        (data.state_description || "IDLE - Waiting for sensors");
 
                     // System toggle sync
                     if (typeof data.system_disabled !== 'undefined') {

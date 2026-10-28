@@ -110,6 +110,10 @@ bool isSystemDisabled() {
     return systemDisabled;
 }
 
+bool isBootServiceMode() {
+    return systemDisabled && serviceBootStartMs != 0 && serviceTimeoutMs == SERVICE_MODE_AUTO_ENABLE_MS;
+}
+
 uint32_t getServiceRemainingMs() {
     if (!systemDisabled || serviceBootStartMs == 0) return 0;
     uint32_t el = millis() - serviceBootStartMs;

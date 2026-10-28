@@ -47,6 +47,9 @@ WaterAlgorithm::WaterAlgorithm() {
 
     alarmArmed    = true;
     disarmUntilTs = 0;
+    wdRefTs       = 0;
+    wdWasActive   = true;    // a boot in Auto (or the boot Service Mode) does not restart it
+    noTopOffAlarm = false;
     lastError     = ERROR_NONE;
 
     systemWasDisabled = false;
@@ -155,6 +158,7 @@ void WaterAlgorithm::update() {
     checkResetButton();
     checkPumpAutoEnable();
     checkServiceAutoEnable();
+    checkNoTopOffWatchdog();
 
     if (isSystemDisabled()) {
         handleSystemDisable();
@@ -309,6 +313,8 @@ void WaterAlgorithm::finishPumpCycle() {
     uint32_t intervalS = (lastTopOffTimestamp > 0 && nowTs > lastTopOffTimestamp)
                          ? (nowTs - lastTopOffTimestamp) : 0;
     lastTopOffTimestamp = nowTs;
+    wdRefTs       = nowTs;   // no-top-off watchdog: a dose — saved with the record below
+    noTopOffAlarm = false;
 
     // The interval is the time the PREVIOUS dose took to evaporate, so the rate uses
     // that cycle's dose — otherwise the first cycle after a dose change is skewed
@@ -370,6 +376,7 @@ void WaterAlgorithm::finishPumpCycle() {
     saveTopOffRecord(record);
     saveEmaToFRAM();
     framBusy = false;
+    saveErrorState();
 
     rolling24hVolumeMl = rolling24h();
 
@@ -578,6 +585,7 @@ void WaterAlgorithm::saveErrorState() {
     st.last_error      = (uint8_t)lastError;
     st.magic           = ALG_ERROR_STATE_MAGIC;
     st.disarm_until_ts = alarmArmed ? 0 : disarmUntilTs;
+    st.wd_ref_ts       = wdRefTs;
     framBusy = true;
     saveAlgErrorStateToFRAM(st);
     framBusy = false;
@@ -591,6 +599,7 @@ void WaterAlgorithm::loadErrorState() {
     if (!ok) return;
     disarmUntilTs = st.disarm_until_ts;
     alarmArmed    = (disarmUntilTs == 0);
+    wdRefTs       = st.wd_ref_ts;
     if (st.last_error != ERROR_NONE) {
         lastError    = (ErrorCode)st.last_error;
         currentState = STATE_ERROR;
@@ -600,6 +609,39 @@ void WaterAlgorithm::loadErrorState() {
     if (!alarmArmed) {
         LOG_INFO("WaterAlgorithm: anomaly alarm disarmed until ts=%lu", (unsigned long)disarmUntilTs);
     }
+}
+
+// No auto top-off for NO_TOPOFF_ALARM_S while the ATO could dose → critical
+// alarm (buzzer), no blocking: a dead or stuck-up sump float never starts the
+// pump and nothing else would notice. Cleared by the next auto dose or a reset.
+void WaterAlgorithm::checkNoTopOffWatchdog() {
+    static uint32_t lastCheckMs = 0;
+    uint32_t nowMs = millis();
+    if (lastCheckMs && nowMs - lastCheckMs < 1000) return;
+    lastCheckMs = nowMs | 1u;
+
+    uint32_t nowTs = getUnixTimestamp();
+    if (!isUnixTimeValid()) return;
+    if (wdRefTs == 0 || wdRefTs > nowTs) {   // first start / clock moved back
+        wdRefTs = lastTopOffTimestamp && lastTopOffTimestamp <= nowTs ? lastTopOffTimestamp : nowTs;
+        saveErrorState();
+    }
+
+    bool active = !(isSystemDisabled() && !isBootServiceMode()) &&
+                  currentState != STATE_ERROR && !isReserveEmpty();
+    if (active && !wdWasActive) {
+        wdRefTs = nowTs;   // the blocked period does not count
+        saveErrorState();
+        LOG_INFO("No-top-off watchdog restarted (ATO can dose again)");
+    }
+    wdWasActive = active;
+
+    bool alarm = active && nowTs - wdRefTs >= NO_TOPOFF_ALARM_S;
+    if (alarm && !noTopOffAlarm) {
+        LOG_WARNING("NO TOP-OFF for %lu h — check the sump float sensor / wiring",
+                    (unsigned long)((nowTs - wdRefTs) / 3600));
+    }
+    noTopOffAlarm = alarm;
 }
 
 // ============================================================
@@ -621,7 +663,7 @@ void WaterAlgorithm::checkResetButton() {
     if (done || millis() - pressStart < RESET_HOLD_MS) return;
     done = true;
 
-    if (currentState != STATE_ERROR && !isReserveEmpty()) {
+    if (currentState != STATE_ERROR && !isReserveEmpty() && !noTopOffAlarm) {
         LOG_INFO("Reset button: nothing to reset");
         return;
     }
@@ -646,6 +688,11 @@ bool WaterAlgorithm::resetSystem() {
         disarmUntilTs = (uint32_t)getUnixTimestamp() + ALARM_DISARM_S;
         LOG_INFO("Anomaly alarm disarmed for %lu h or until score < %.1f",
                  (unsigned long)(ALARM_DISARM_S / 3600), config.zone_yellow);
+    }
+    if (noTopOffAlarm) {
+        noTopOffAlarm = false;
+        wdRefTs       = (uint32_t)getUnixTimestamp();   // acknowledged — another 24 h
+        LOG_INFO("No-top-off alarm acknowledged — watchdog restarted");
     }
     lastError    = ERROR_NONE;
     currentState = STATE_IDLE;

@@ -138,6 +138,11 @@ Kolejność 1–3 jest sztywna. Od 4 dalej można przestawiać.
    Odp. (2026-10-28): buzzer tylko przy błędach krytycznych; rezerwa — GUI / panel.
 4. Pompa niekalibrowana: blokada auto czy tylko status?
 5. Brak odczytu od startu: auto zablokowane czy N porcji?
+   Odp. (2026-10-28): ostatni odczyt i pobrana od niego woda w FRAM — restart kontynuuje od nich.
+   Bez niczego w FRAM: auto zablokowane do pierwszego odczytu, po 60 s bez odczytu alarm krytyczny.
+   Szacunek bez odczytu: połowa zapasu nad alarmem minus dawki; „Reservoir refilled” przy
+   niedziałającym czujniku; poziom alarmowy = alarm krytyczny z buzzerem; brak odczytu 30 min —
+   żółty status. Szczegóły: `RESERVE_LEVEL_SENSOR_VL53L4CD.md` §7a.
 6. Watchdog braku dolewki: k i T_min (propozycja 3 × typowy interwał, min. 12 h).
 
 ## 7. Raport zwrotny do `home_display-iot`

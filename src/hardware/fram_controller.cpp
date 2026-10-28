@@ -1051,3 +1051,28 @@ bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg) {
     return true;
 }
 
+bool saveReserveTrackToFRAM(const ReserveTrack& t) {
+    if (!framInitialized) return false;
+
+    fram.write(FRAM_ADDR_RESERVE_TRACK, (uint8_t*)&t, sizeof(ReserveTrack));
+    uint16_t chksum = calculateChecksum((uint8_t*)&t, sizeof(ReserveTrack));
+    fram.write(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&chksum, 2);
+    return true;
+}
+
+bool loadReserveTrackFromFRAM(ReserveTrack& t) {
+    if (!framInitialized) return false;
+
+    ReserveTrack tmp;
+    fram.read(FRAM_ADDR_RESERVE_TRACK, (uint8_t*)&tmp, sizeof(ReserveTrack));
+    uint16_t stored = 0;
+    fram.read(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&stored, 2);
+
+    if (tmp.magic != RESERVE_TRACK_MAGIC ||
+        calculateChecksum((uint8_t*)&tmp, sizeof(ReserveTrack)) != stored) {
+        return false;
+    }
+    t = tmp;
+    return true;
+}
+

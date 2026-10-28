@@ -25,6 +25,7 @@ static void abortCalibration(const char* note) {
 }
 
 static const char* startRun() {
+    if (!reserveCanDose()) return "Not enough water above the alarm level for one more run — refill first";
     if (!triggerPumpMs(CAL_RUN_MAX_MS, "CALIBRATION")) return "Pump start failed";
     g_runStart  = millis();
     g_cal.phase = CAL_RUNNING;
@@ -66,10 +67,10 @@ const char* startPumpCalibration(uint16_t doseMl) {
     if (doseMl < CAL_DOSE_MIN_ML || doseMl > CAL_DOSE_MAX_ML) return "Single Dose: 1–2000 ml";
     if (!isReservoirConfigSaved())           return "Save the reservoir dimensions first";
     if (isPumpActive() || isDirectPumpMode()) return "Pump running — wait until it stops";
-    if (isReserveEmpty())                    return "Reservoir empty — refill first";
-    // Level sensor estimate (±2 cm) — checked only when there is a reading
+    if (isReserveEmpty())                    return "Reservoir alarm — refill first";
     const ReserveView rv = getReserveView(doseMl);
-    if (rv.reading && rv.portions < CAL_RUNS + 1) {
+    if (rv.zone == RESERVE_ZONE_UNKNOWN)     return "No reservoir level — wait for a level reading";
+    if (rv.portions < CAL_RUNS + 1) {
         return "Not enough water above the alarm level for 4 portions + 1 — refill first";
     }
 

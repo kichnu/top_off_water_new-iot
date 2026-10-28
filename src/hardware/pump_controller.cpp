@@ -43,6 +43,11 @@ static void armStopTimer(uint32_t durationMs) {
     esp_timer_start_once(g_stopTimer, (uint64_t)durationMs * 1000ULL);
 }
 
+// Every finished run takes water from the reservoir
+static void onRunEnd() {
+    reserveOnPumpRun(lastPumpRunMs, currentActionType == "CALIBRATION");
+}
+
 static uint16_t directVolumeMl(uint32_t runMs) {
     return (uint16_t)lroundf(runMs * currentPumpSettings.volumePerSecond / 1000.0f);
 }
@@ -113,15 +118,16 @@ void updatePumpController() {
         lastPumpRunMs = millis() - pumpStartTime;
         LOG_INFO("");
         LOG_INFO("Pump stopped - globally disabled");
+        onRunEnd();
         return;
     }
 
-    // Pause between manual portions — the next one starts only if there is water
+    // Pause between manual portions — the next one starts only if it fits above the alarm level
     if (directPumpMode && g_manualPause && millis() - g_pauseStartMs >= MANUAL_PORTION_PAUSE_MS) {
         g_manualPause = false;
-        if (isReserveEmpty()) {
-            LOG_WARNING("Manual dosing: reservoir empty — remaining portions dropped");
-            endManualSession("reservoir empty");
+        if (!reserveCanDose()) {
+            LOG_WARNING("Manual dosing: no water above the alarm level for one more portion — remaining portions dropped");
+            endManualSession("reservoir at the alarm level");
         } else {
             startManualPortion();
         }
@@ -138,6 +144,7 @@ void updatePumpController() {
         LOG_INFO("");
         LOG_INFO("Pump stopped after %.1f s (%s)", lastPumpRunMs / 1000.0f, currentActionType.c_str());
 
+        onRunEnd();
         currentActionType = "";
         if (directPumpMode) onManualPortionEnd(false);
     }
@@ -196,6 +203,7 @@ void stopPump() {
         LOG_INFO("");
         LOG_INFO("Pump manually stopped after %.1f s (%s)", lastPumpRunMs / 1000.0f, currentActionType.c_str());
 
+        onRunEnd();
         currentActionType = "";
         if (directPumpMode) onManualPortionEnd(true);
     } else if (directPumpMode) {
@@ -209,6 +217,10 @@ bool manualPortionAdd() {
         return false;
     }
     if (!directPumpMode) {
+        if (!reserveCanDose()) {
+            LOG_WARNING("Manual portion blocked — no water above the alarm level for one portion");
+            return false;
+        }
         directPumpMode = true;
         g_manualLeft   = 1;
         g_manualDone   = 0;

@@ -176,7 +176,10 @@ void handleStatus(AsyncWebServerRequest* request) {
     // RESERVE STATUS
     // ============================================
     json["reserve_low"]         = isReserveLow();
-    json["reserve_empty"]       = isReserveEmpty();
+    json["reserve_empty"]       = isReserveEmpty();          // alarm latched (critical)
+    json["reserve_alarm"]       = (uint8_t)getReserveAlarmCause();
+    json["reserve_alarm_text"]  = getReserveAlarmString();
+    json["reserve_no_reading"]  = isReserveNoReadingAlert(); // warning, no buzzer
 
     // Reservoir level sensor (VL53L4CD) — diagnostics, not yet used by the algorithm
     {
@@ -198,7 +201,14 @@ void handleStatus(AsyncWebServerRequest* request) {
         uint16_t    dose = waterAlgorithm.getConfig().dose_ml;
         ReserveView rv   = getReserveView(dose);
         json["res_configured"]    = isReservoirConfigSaved();
-        json["res_reading"]       = rv.reading;
+        json["res_reading"]       = rv.reading;        // measured mode
+        json["res_estimated"]     = rv.estimated;      // no reading — minimum estimate
+        json["res_no_reading_s"]  = rv.noReadingS;
+        json["res_avail_ml"]      = rv.availMl;        // above the alarm level
+        {
+            float rate = waterAlgorithm.getEma().ema_rate_ml_h;
+            json["res_hours_left"] = (rate > 0.1f && rv.availMl > 0) ? rv.availMl / rate : -1.0f;
+        }
         json["res_ml"]            = rv.ml;         // from the bottom
         json["res_portions"]      = rv.portions;   // above the alarm level
         json["res_capacity_ml"]   = rv.capacityMl;
@@ -279,9 +289,9 @@ void handleDirectPumpOn(AsyncWebServerRequest* request) {
         return;
     }
 
-    if (isReserveEmpty()) {
+    if (!isDirectPumpMode() && !reserveCanDose()) {
         request->send(400, "application/json",
-            "{\"success\":false,\"error\":\"Reserve empty — refill the reservoir\"}");
+            "{\"success\":false,\"error\":\"No water above the alarm level for one portion — refill the reservoir\"}");
         return;
     }
     if (isPumpCalibrationActive()) {
@@ -643,6 +653,7 @@ void handleSystemReset(AsyncWebServerRequest* request) {
     json["success"] = success;
     json["state"]   = waterAlgorithm.getStateString();
     json["message"] = success ? "System reset to IDLE" : "Reset blocked - logging in progress";
+    if (isReserveEmpty()) json["reserve_alarm"] = getReserveAlarmString();   // stays until refilled
 
     String response;
     serializeJson(json, response);
@@ -833,6 +844,30 @@ void handlePumpCalibration(AsyncWebServerRequest* request) {
         err = pumpCalibrationAction(action);
     }
 
+    JsonDocument doc;
+    doc["success"] = (err == nullptr);
+    if (err) doc["error"] = err;
+    String resp; serializeJson(doc, resp);
+    request->send(err ? 409 : 200, "application/json", resp);
+}
+
+// ===============================
+// RESERVOIR REFILLED (no level reading)
+// POST — the user refilled the reservoir to the marker while the level sensor
+//        is not reading: restarts the estimate, clears the reservoir alarm and
+//        an ATO error caused by it
+// ===============================
+
+void handleReserveRefill(AsyncWebServerRequest *request) {
+    if (!checkAuthentication(request)) {
+        request->send(401, "text/plain", "Unauthorized");
+        return;
+    }
+    const char* err = reserveRefilled();
+    if (!err && waterAlgorithm.getState() == STATE_ERROR &&
+        waterAlgorithm.getLastError() == ERROR_LOW_RESERVOIR) {
+        waterAlgorithm.resetSystem();
+    }
     JsonDocument doc;
     doc["success"] = (err == nullptr);
     if (err) doc["error"] = err;

@@ -8,9 +8,10 @@ Testy fizyczne czujnika: `~/Dokumenty/My_apps/TOOLS/distance_sensor_pololu/WNIOS
 
 ## ⚠ Przypomnienia (do zrobienia)
 
-- **Brak stopu pompy przy pustym zbiorniku.** Pływak rezerwy usunięty z kodu (decyzja
-  2026-10-25, krok 1 planu `AUDYT_I_PLAN_REZERWY_TOF_1.0.md`). Stop na poziomie alarmowym z ToF
-  — krok 3 tamtego planu. Do tego czasu NIC nie zatrzymuje pompy przy pustym zbiorniku.
+- **Stop na poziomie alarmowym z ToF (2026-10-28, krok 3 planu `AUDYT_I_PLAN_REZERWY_TOF_1.0.md`)
+  — nietestowany na sprzęcie.** Przetestować: zejście do poziomu alarmowego (alarm + buzzer,
+  blokada porcji), reset poniżej alarm + 1 porcja (alarm zostaje), odłączony czujnik (po 5 min
+  szacunek, po 30 min żółty status, „Reservoir refilled”), restart w alarmie (wraca z FRAM).
 - **Test `LVLTEST` (`level_test.*`) zostaje** — narzędzie diagnostyczne czujnika; usunąć dopiero,
   gdy przestanie być potrzebny.
 
@@ -92,8 +93,8 @@ bez automatycznego powrotu do Auto.
   pompowania porcjami; `portion_pause_s` z FRAM nieużywane.
 - OFF dokańcza bieżącą porcję i zeruje kolejkę; OFF w przerwie kończy od razu. Emergency stop
   (`/api/pump/stop`) przerywa porcję natychmiast.
-- Blokada startu: trwająca kalibracja. `isReserveEmpty()` (dawniej pływak) na razie zawsze
-  false — wróci ze stopem na ToF.
+- Blokada startu: trwająca kalibracja; każda porcja (pierwsza i kolejne z kolejki) startuje tylko,
+  gdy mieści się ponad poziomem alarmowym (`reserveCanDose()`), inaczej reszta kolejki odpada.
 - Porcje ręczne omijają algorytm, Service Mode i limit dobowy; nie liczą się do „Added in 24h”
   i nie trafiają do historii cykli (zaburzałyby EMA).
 - W trakcie sesji (porcje + przerwy) cykl ATO jest odkładany, kalibracja nie startuje.
@@ -114,34 +115,60 @@ bez automatycznego powrotu do Auto.
 - Tekst: „≈ N / M portions”, ml, %, wysokość wody / znacznik, wiek pomiaru, „settling after
   pump”. Brak ważnego odczytu → „no reading”.
 - Aktualizacja jak dotąd: serie co 10 s, cisza 2 min po pompie. Buzzer tylko przy błędach
-  krytycznych (decyzja 2026-10-28) — rezerwa i alarm z czujnika: żółty status. Stop pompy na
-  poziomie alarmowym — krok 3.
+  krytycznych (decyzja 2026-10-28): rezerwa — żółty status; poziom alarmowy — alarm krytyczny.
+
+## 7a. Stop na poziomie alarmowym i szacunek bez odczytu (2026-10-28)
+
+`reserve_controller`. Decyzje z rozmowy 2026-10-28 (propozycja użytkownika, doprecyzowana):
+
+- Poziom do decyzji (tryb pomiaru): minimum z 3 ostatnich ważnych serii (poza ciszą po pompie)
+  minus woda pobrana od tego odczytu. Pobrana woda: każde zakończenie pracy pompy — auto i ręczne
+  wg czasu (`czas × dawka / czas porcji`), kalibracja 1 porcja na przebieg.
+- Alarm krytyczny (zatrzask, buzzer `BUZZER_ALARM`, `ERROR_LOW_RESERVOIR` przy próbie cyklu):
+  poziom ≤ alarm; dawka auto, która by się nie zmieściła; brak jakiegokolwiek odczytu 60 s po
+  starcie (pierwsze uruchomienie / niezapisany zbiornik). Porcja ręczna i przebieg kalibracji,
+  które się nie mieszczą — odmowa bez zatrzasku.
+- Kasowanie: Cycle Reset / przycisk tylko w trybie pomiaru i przy poziomie ≥ alarm + 1 porcja;
+  bez samoistnego kasowania.
+- Szacunek (tryb bez odczytu): po 5 min bez ważnej serii poza ciszą po pompie oraz po każdym
+  starcie aż do 3 ważnych serii z rzędu. `zapas = (ostatni_odczyt − alarm) / 2 − pobrane od
+  odczytu` — połowa zapasu nad alarmem = każda porcja liczona podwójnie (zapas na błąd kalibracji
+  i odczytu). Zapas ≤ 0 → alarm krytyczny. Po 30 min bez odczytu żółty status (bez buzzera).
+  Szacunek liczy faktyczne dawki, nie EMA; EMA tylko do informacji „≈ N h / dni do alarmu”.
+- „Reservoir refilled” (GUI, z potwierdzeniem; `POST /api/reserve/refill`) — tylko bez odczytu:
+  szacunek od pełnego zbiornika (do znacznika, dalej połowa zapasu), kasuje alarm rezerwy i
+  `ERROR_LOW_RESERVOIR`. W trybie pomiaru 409 (poziom i tak mierzony).
+- FRAM `ReserveTrack` (0x05C4): ostatni odczyt (ml, czas, źródło: czujnik / refill), pobrane od
+  niego, przyczyna zatrzasku — restart (także nocny) kontynuuje od nich, zatrzask przeżywa
+  restart.
+- GUI: pasek kreskowany w szacunku („Left: ≥ … (estimate)”), notatki: przyczyna alarmu, czas
+  bez odczytu, czas do alarmu z EMA. `/api/status`: `reserve_empty` (zatrzask), `reserve_alarm`
+  (kod 0–4), `reserve_alarm_text`, `reserve_no_reading`, `res_estimated`, `res_no_reading_s`,
+  `res_avail_ml`, `res_hours_left`.
 
 ## 8. Pływak rezerwy — usunięty (2026-10-25)
 
-Wdrożony w v5, nigdy nie zamontowany (`RESERVE_FLOAT_ENABLED = 0`), usunięty z kodu. Zostały
-punkty zaczepienia dla stopu na ToF: `isReserveEmpty()` (na razie false), `clearReserveLatch()`
-(pusta) i pole `reserve_empty` w `/api/status`; pole `reserve_float` usunięte. Następca:
-poziom alarmowy na ToF — `AUDYT_I_PLAN_REZERWY_TOF_1.0.md` §3.
+Wdrożony w v5, nigdy nie zamontowany (`RESERVE_FLOAT_ENABLED = 0`), usunięty z kodu. Pole
+`reserve_float` usunięte z API. Następca: poziom alarmowy na ToF (§7a).
 
 ## 9. Buzzer
 
-Jeden wzorzec `BUZZER_ALARM` — 2 piknięcia 50 ms co 120 s: każdy błąd ATO (dawniej też
-pływak). Zakres rezerwy z czujnika — bez buzzera.
+Jeden wzorzec `BUZZER_ALARM` — 2 piknięcia 50 ms co 120 s: każdy błąd ATO i alarm rezerwy
+(poziom alarmowy / szacunek / brak odczytu). Zakres rezerwy i brak odczytu 30 min — bez buzzera.
 
 ## 10. FRAM
 
-`ReservoirConfig` 0x05A2–0x05C3 (z `PumpCalibration`). Licznik porcji (`ReserveState`,
-0x05C4–0x05D5) usunięty — wolne 0x05C4–0x05FF oraz 0x0AC0–0x7FFF.
+`ReservoirConfig` 0x05A2–0x05C3 (z `PumpCalibration`). `ReserveTrack` 0x05C4–0x05D5 (16 B + 2 B
+sumy, magic 0xC5; dawniej w tym miejscu licznik porcji `ReserveState`). Wolne 0x05D6–0x05FF oraz
+0x0AC0–0x7FFF.
 
 ## 11. API
 
 - `GET|POST /api/reserve-config` — wymiary i znacznik; wyliczane ml/mm, pojemność, progi.
 - `POST /api/pump/calibration` — `start&dose_ml`, `run`, `stop`, `confirm`, `cancel`.
 - `GET /api/status` — `res_*` (szacunek z czujnika; `res_reserve_ml`, `res_alarm_ml`, `res_zone`),
-  `reserve_low` (strefa REZERWA lub ALARM), `reserve_empty`
-  (na razie zawsze false), `cal_*`.
-- Usunięte: `POST /api/reserve/refill`.
+  `reserve_low` (strefa REZERWA lub ALARM), `reserve_empty` (zatrzask alarmu), pola z §7a, `cal_*`.
+- `POST /api/reserve/refill` — „zbiornik uzupełniony” bez odczytu (§7a).
 
 ## 12. Później (świadomie odłożone)
 

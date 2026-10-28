@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, source-water reservoir monitoring (VL53L4CD level estimate; no empty-reservoir stop yet), fixed-dose pump algorithm with EMA trend tracking, web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates. Full upload commands (serial + OTA): see `README`.
+ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, source-water reservoir monitoring (VL53L4CD level with a pump stop on a configurable alarm level and a fail-safe estimate without readings), fixed-dose pump algorithm with EMA trend tracking, web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates. Full upload commands (serial + OTA): see `README`.
 
 ## Build Commands
 
@@ -59,7 +59,7 @@ hardware/           Hardware abstraction layer
   level_test.*         LVLTEST diagnostic level test (kept for diagnostics)
   pump_calibration.*   Guided portion calibration (4 runs, mean portion time in ms, FRAM in ReservoirConfig)
   pump_controller.*    ATO pump relay control (auto + direct/manual), run end cut by esp_timer (ms)
-  reserve_controller.* Source-water reserve: level-sensor estimate (info)
+  reserve_controller.* Source-water reserve: level, alarm-level stop + latch, fail-safe estimate (FRAM)
   rtc_controller.*     DS3231 RTC with NTP sync
   water_sensors.*      Float sensor debouncing (ATO)
 
@@ -93,7 +93,7 @@ Located in `algorithm/water_algorithm.cpp`, states defined in `algorithm_config.
 
 ```
 STATE_IDLE → STATE_DEBOUNCING → STATE_PUMPING → STATE_LOGGING → STATE_IDLE
-Any state → (daily limit / red alert) → STATE_ERROR
+Any state → (reservoir alarm level / daily limit / red alert) → STATE_ERROR
 ```
 
 Direct/manual pump control (`/api/pump/direct-on`) bypasses this state machine
@@ -115,7 +115,8 @@ Defined in `hardware/fram_controller.h`:
 - `0x0560-0x0589`: TopOffConfig (40B + 2B checksum), magic=0xA8
 - `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
 - `0x05A2-0x05C3`: ReservoirConfig incl. PumpCalibration (32B + 2B checksum), magic=0xB3
-- `0x05C4-0x05FF`: free (0x05C4-0x05D5 was the reserve portion counter, removed)
+- `0x05C4-0x05D5`: ReserveTrack (16B + 2B checksum) — last level reading, water pumped since, alarm latch, magic=0xC5
+- `0x05D6-0x05FF`: free
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 - `0x1100-0x290F`: Level sensor event log (16B header + 48 × 128B), diagnostics
 
@@ -133,9 +134,9 @@ Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
 - Free: GPIO 2, 8, 9, 21 (21 = UART0 TX, driven HIGH by the ROM boot log — no switch to GND)
 
 > Note: output levels are defined as `PUMP_RELAY_ON/OFF` and `BUZZER_LEVEL_ON/OFF` in
-> `hardware_pins.h`. Reserve: the VL53L4CD level is an estimate (~±2 cm, information only,
-> no alarms). The reservoir float switch was removed; there is no empty-reservoir pump stop until
-> the ToF alarm level is in place (`docs/AUDYT_I_PLAN_REZERWY_TOF_1.0.md`).
+> `hardware_pins.h`. Reserve: the VL53L4CD level is an estimate (~±2 cm,
+> margin covered by the alarm level). The pump stop on an empty reservoir is the ToF alarm level
+> (`reserve_controller`); without readings a halved estimate from the last reading (see `README`).
 > GPIO 9 is the BOOT strap pin (LOW during boot → download mode) — must stay unconnected.
 
 ### Key API Endpoints (Production Mode)
@@ -165,7 +166,8 @@ History/volumes:
 - `GET  /api/fill-water-max` — daily_limit_ml and dose_ml
 - `POST /api/set-fill-water-max` — set daily_limit_ml
 - `GET|POST /api/alg-config` — alarm-score zones and initial EMA (EMA alpha/clamp, P1/P2 are constants)
-- `GET|POST /api/reserve-config` — reservoir geometry (length, width, sensor → bottom, marker level)
+- `GET|POST /api/reserve-config` — reservoir geometry (length, width, sensor → bottom, marker level), reserve/alarm level %
+- `POST /api/reserve/refill` — "reservoir refilled" while the level sensor is not reading (restarts the estimate)
 - `GET|POST /api/level-events` — level sensor event log from FRAM (GET: plain text, POST: clear)
 - `GET  /api/get-statistics` / `POST /api/reset-statistics`
 

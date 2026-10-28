@@ -30,7 +30,7 @@ Non-blocking FreeRTOS task (`src/hardware/buzzer_controller.*`), ticking every 5
 |---|---|---|
 | `BUZZER_OFF` | silent | default |
 | `BUZZER_PROVISIONING` | tick 0 ON, 12s cycle | captive portal active |
-| `BUZZER_ALARM` | two 50 ms beeps, every 120 s | any ATO error |
+| `BUZZER_ALARM` | two 50 ms beeps, every 120 s | any ATO error or the reservoir alarm (alarm level reached, estimate down to it, or no level reading) |
 
 Boot feedback: `buzzerPowerOn()` (1s tone at start of `setup()`), `buzzerOK()` (short+long — boot complete, all systems OK), `buzzerCritical()` (4× 250ms — critical boot error: FRAM init failed, WiFi/RTC not working, etc).
 
@@ -64,11 +64,13 @@ STATE_LOGGING     save TopOffRecord + EmaBlock to FRAM (5s)
 STATE_IDLE
 
 Any state → STATE_ERROR when:
+  - the reservoir alarm is latched, or the next portion would go below the
+    reservoir alarm level (ERROR_LOW_RESERVOIR)
   - rolling 24h volume >= daily_limit_ml
   - alarm_score >= zone_yellow after a cycle (red alert)
-STATE_ERROR requires explicit Cycle Reset (web button or reset button).
-ERROR_LOW_RESERVOIR is defined but not raised yet: there is no
-empty-reservoir stop until the ToF alarm level is in place.
+STATE_ERROR requires explicit Cycle Reset (web button or reset button); the
+reservoir alarm itself clears only with a measured level >= alarm level +
+1 portion, or with "Reservoir refilled" while the sensor is not reading.
 
 Direct/manual pump control bypasses this state machine entirely (separate
 code path in pump_controller, ignores system-disable and daily limit).
@@ -82,7 +84,7 @@ System Control → **Pump ON** / **OFF** (`/api/pump/direct-on`, `/api/pump/dire
 - Portions are separated by a fixed 5 s pause (`MANUAL_PORTION_PAUSE_MS`) — it only marks the portion-wise pumping.
 - OFF finishes the running portion and drops the rest of the queue; OFF during a pause ends the session at once. Emergency stop (`/api/pump/stop`) cuts the running portion immediately.
 - Manual portions bypass the algorithm, Service Mode and the daily limit; they are not counted in the 24 h volume and not logged in the cycle history (they would distort the EMA).
-- Start is blocked while a pump calibration is running. While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
+- Start is blocked while a pump calibration is running, and every portion (the first one and each one from the queue) starts only if it fits above the reservoir alarm level. While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
 
 ### EMA / Alarm Score
 
@@ -110,11 +112,13 @@ No level measurement during the calibration. The pump end is cut by a one-shot `
 
 `src/hardware/reserve_controller.*` (see `docs/RESERVE_LEVEL_SENSOR_VL53L4CD.md`):
 - **Level sensor.** Volume = reservoir floor area (`length_mm × width_mm`) × water height (`sensor_to_bottom_mm` − reading); 100% = the marker. Two levels set in Settings, in % of the capacity and rounded up to whole portions: the reserve level (`reserve_pct`, default 30%, yellow range, warning only — no buzzer) and the alarm level (`alarm_pct`, default 15%, red range; at least 2 portions below the reserve level). Zones: OK → RESERVE → ALARM, or UNKNOWN without a valid reading. The dashboard shows a level bar with ml, % and the portions left above the alarm level. Expected error ~±2 cm (water surface reflections, field of view hitting the walls) — Settings warns when the alarm level keeps less than 30 mm of water (the largest jump between series seen in tests).
-- **No empty-reservoir stop yet.** The reservoir float switch was removed; a pump stop on a configurable ToF alarm level (with a fail-safe policy for sensor faults) is planned. Until then nothing stops the pump when the reservoir runs dry.
+- **Pump stop on the alarm level.** The level used for decisions is the minimum of the last 3 valid series minus the water pumped since (auto doses, manual portions — by run time — and calibration runs, one portion each). A portion (auto, manual, calibration run) starts only if it fits above the alarm level. Reaching the alarm level, or an auto dose that would not fit, latches the reservoir alarm: `BUZZER_ALARM`, `ERROR_LOW_RESERVOIR`, no new portion. The latch is kept in FRAM (survives restarts) and clears on Cycle Reset / the reset button only with a measured level ≥ alarm level + 1 portion.
+- **No level reading (fail-safe).** After 5 min without a valid series (outside the post-pump quiet time) and after every boot, the reserve switches to an estimate: half of what was above the alarm level at the last reading, minus everything pumped since (every portion effectively counts double). The dashboard shows the bar hatched with "≥ … (estimate)"; after 30 min without a reading the status turns yellow (no buzzer). When the estimate reaches the alarm level, the reservoir alarm latches. Back to measured after 3 valid series in a row. The last reading and the water pumped since are kept in FRAM (`ReserveTrack`), so a restart continues from them; with nothing saved, auto is blocked until the first reading and the alarm latches after 60 s without one. While the sensor is not reading, **Reservoir refilled** (dashboard, `/api/reserve/refill`, with confirmation) restarts the estimate from a full reservoir and clears the reservoir alarm and an `ERROR_LOW_RESERVOIR`.
 
 ## Safety
 
 - **Daily volume limit** (`daily_limit_ml`, default 2000 ml) — rolling 24h window; exceeding it → `STATE_ERROR`
+- **Reservoir alarm level** — no portion below it (auto, manual, calibration); latched alarm with buzzer, kept in FRAM; fail-safe estimate without a level reading
 - **Midnight auto-restart** — firmware restarts at 00:00 local time daily (guarded: only after 30 min uptime, and only if RTC has a valid time); ATO pump stopped safely first
 - **Service Mode at boot** — 15-minute grace period before auto-operation begins
 - **OTA safety** — pump stopped and system disabled in `ArduinoOTA.onStart()`, before the flash erase that would otherwise block the CPU for several seconds with the pump left in whatever state it was in
@@ -192,6 +196,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 | POST | `/api/set-fill-water-max` | Set daily volume limit |
 | GET/POST | `/api/alg-config` | Get/set alarm-score zones and initial EMA |
 | GET/POST | `/api/level-events` | Level sensor event log kept in FRAM (boot, sensor self-resets detected after a pump run or in a no-data series and re-initialized at once, FAULT with the rejection breakdown, soft/XSHUT resets, bus recovery, recovery); GET returns plain text, POST clears it |
+| POST | `/api/reserve/refill` | "Reservoir refilled to the marker" — only while the level sensor is not reading (409 otherwise); restarts the estimate, clears the reservoir alarm and an `ERROR_LOW_RESERVOIR` |
 | GET/POST | `/api/reserve-config` | Get/set reservoir geometry (`length_mm`, `width_mm`, `sensor_to_bottom_mm`, `marker_level_mm`) and levels (`reserve_pct`, `alarm_pct`); returns derived `ml_per_mm`, `capacity_ml`, `full_ml`, `reserve_ml`, `alarm_ml`, `alarm_mm` |
 | GET | `/api/daily-volume` | Rolling 24h stats |
 | POST | `/api/reset-daily-volume` | Reset 24h counter |
@@ -327,7 +332,7 @@ src/
     level_sensor.*          VL53L4CD ToF reservoir level (non-blocking sample series)
     pump_calibration.*      Guided portion calibration (4 runs, mean time in ms)
     pump_controller.*       ATO pump relay control (auto + direct/manual)
-    reserve_controller.*    Source-water reserve: level-sensor estimate
+    reserve_controller.*    Source-water reserve: level, alarm-level stop, fail-safe estimate
     rtc_controller.*        DS3231 RTC + NTP sync + internal fallback
     water_sensors.*         Float sensor debouncing
     buzzer_controller.*     FreeRTOS buzzer task, priority-based modes
@@ -350,7 +355,7 @@ Defined in `src/hardware/fram_controller.h` (unified layout, shared with the cre
   0x0560–0x0589   TopOffConfig (40 bytes + 2B checksum, magic 0xA8)
   0x0590–0x05A1   EmaBlock (16 bytes + 2B checksum)
   0x05A2–0x05C3   ReservoirConfig incl. PumpCalibration (32 bytes + 2B checksum, magic 0xB3)
-  0x05C4–0x05D5   (unused — former reserve portion counter)
+  0x05C4–0x05D5   ReserveTrack: last level reading, water pumped since, alarm latch (16 bytes + 2B checksum, magic 0xC5)
   0x0600–0x0603   Top-off ring buffer count + write pointer
   0x0610–0x0AC0   Top-off ring buffer (60 × TopOffRecord, 20 bytes each)
   0x1100–0x290F   Level sensor event log (16-byte header + 48 × 128-byte events)

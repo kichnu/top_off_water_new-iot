@@ -227,8 +227,8 @@ void WaterAlgorithm::startAutoPump() {
         return;
     }
 
-    if (isReserveEmpty()) {
-        LOG_WARNING("Reserve empty — auto pump blocked → STATE_ERROR");
+    if (!reserveCheckDose()) {
+        LOG_WARNING("Reserve: %s — auto pump blocked → STATE_ERROR", getReserveAlarmString());
         startErrorSignal(ERROR_LOW_RESERVOIR);
         return;
     }

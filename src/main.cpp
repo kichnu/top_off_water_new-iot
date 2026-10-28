@@ -276,6 +276,7 @@ void loop() {
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();
     updateLevelSensor();
+    updateReserveController();
     updatePumpCalibration();
     updateLevelTest();
     waterAlgorithm.update();
@@ -284,8 +285,8 @@ void loop() {
     if (now - lastUpdate >= 100) {
         updatePumpController();
 
-        // Buzzer — every ATO error (state stays until reset from the GUI) and
-        // an empty reservoir sound the alarm; the reserve range is GUI-only
+        // Buzzer — critical only: every ATO error (state stays until reset from the
+        // GUI) and the reservoir alarm level; the reserve range is GUI-only
         if (isReserveEmpty() || waterAlgorithm.getState() == STATE_ERROR) {
             setBuzzerMode(BUZZER_ALARM);
         } else {

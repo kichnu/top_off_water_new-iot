@@ -18,7 +18,8 @@ uint32_t getLastPumpRunMs();
 // Manual dosing in portions — bypasses algorithm, system disable and daily limit,
 // not logged in the cycle history. Each ON adds one portion (getPortionMs()) to the
 // queue; portions are separated by a short pause. OFF finishes the running portion
-// and clears the queue. A new portion does not start when the reservoir is empty.
+// and clears the queue. A new portion starts only when it fits above the reservoir
+// alarm level (reserveCanDose).
 #define MANUAL_PORTION_PAUSE_MS  5000
 #define MANUAL_QUEUE_MAX         20
 

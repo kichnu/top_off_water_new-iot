@@ -92,7 +92,10 @@ struct PumpCycle {
 #define FRAM_ADDR_RESERVOIR_CFG     0x05A2   // 32 bytes — ReservoirConfig struct (0x05A2–0x05C1)
 #define FRAM_ADDR_RESERVOIR_CHKSUM  0x05C2   // 2 bytes — checksum
 
-// 0x05C4–0x05FF: free (0x05C4–0x05D5 was the reserve portion counter, removed)
+// Reserve tracking (ReserveTrack: last level reading, water pumped since, alarm latch) — 16 bytes
+#define FRAM_ADDR_RESERVE_TRACK     0x05C4   // 16 bytes — ReserveTrack struct (0x05C4–0x05D3)
+#define FRAM_ADDR_RESERVE_CHKSUM    0x05D4   // 2 bytes — checksum
+// 0x05D6–0x05FF: free
 
 // Ring buffer rekordów dolewek (TopOffRecord, 20 bajtów każdy)
 #define TOPOFF_HISTORY_SIZE         60       // Maksymalnie 60 rekordów (60×20=1200 bajtów)
@@ -165,6 +168,7 @@ struct TopOffRecord;
 struct EmaBlock;
 struct TopOffConfig;
 struct ReservoirConfig;
+struct ReserveTrack;
 
 // Ring buffer rekordów dolewek
 bool saveTopOffRecord(const TopOffRecord& record);
@@ -185,6 +189,10 @@ bool loadTopOffConfigFromFRAM(TopOffConfig& cfg);
 // Reservoir geometry and level-sensor settings
 bool saveReservoirConfigToFRAM(const ReservoirConfig& cfg);
 bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg);
+
+// Reserve tracking (reserve_controller)
+bool saveReserveTrackToFRAM(const ReserveTrack& t);
+bool loadReserveTrackFromFRAM(ReserveTrack& t);
 
 // ===============================
 // FRAM CREDENTIALS SECTION

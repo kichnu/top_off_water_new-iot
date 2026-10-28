@@ -780,6 +780,13 @@ const char* DASHBOARD_HTML = R"rawliteral(
             pointer-events: none;
         }
 
+        /* Estimated mode (no level reading): hatched fill at the minimum estimate */
+        .res-bar-wrap.is-estimated .res-bar-fill,
+        .res-bar-wrap.is-estimated .res-bar-low-fill,
+        .res-bar-wrap.is-estimated .res-bar-alarm-fill {
+            background-image: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.35) 0 4px, transparent 4px 8px);
+        }
+
         .res-bar-alarm {
             position: absolute;
             top: 0;
@@ -1074,6 +1081,9 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     <span id="resLeft"></span>
                 </div>
                 <div class="res-note" id="resNote"></div>
+                <div id="resRefillRow" style="display:none;margin-top:8px;">
+                    <button class="btn btn-secondary btn-small" onclick="reserveRefilled()" id="resRefillBtn">Reservoir refilled</button>
+                </div>
             </div>
             <div class="panel-box">
                 <div class="panel-head">
@@ -1581,6 +1591,21 @@ const char* DASHBOARD_HTML = R"rawliteral(
         // Litres rounded to 0.1 l (panel boxes only)
         function fmtL(ml) { return (ml / 1000).toFixed(1) + ' l'; }
 
+        // Duration for the reserve notes: min / h / days
+        function fmtAge(s) {
+            if (s < 3600)  return Math.max(1, Math.round(s / 60)) + ' min';
+            if (s < 172800) return (s / 3600).toFixed(1) + ' h';
+            return Math.round(s / 86400) + ' days';
+        }
+
+        function reserveRefilled() {
+            if (!confirm('Reservoir refilled to the marker?\nThe level sensor is not reading \u2014 the estimate restarts from a full reservoir and the reservoir alarm clears. Confirm only after filling it to the marker.')) return;
+            secureFetch('api/reserve/refill', {method: 'POST'})
+                .then(function(r) { return r ? r.json() : null; })
+                .then(function(d) { if (d && !d.success) alert(d.error || 'Refill failed'); updateStatus(); })
+                .catch(function(e) { console.error('reserve refill error:', e); });
+        }
+
         function updateReserveBar(d) {
             if (d.res_capacity_ml === undefined) return;
             const wrap = document.getElementById('resBarWrap');
@@ -1595,17 +1620,19 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 capEl.className = 'is-muted';
                 leftEl.textContent = '';
                 note.textContent = 'Enter the reservoir dimensions in Settings \u2192 Reservoir & Level Sensor';
+                document.getElementById('resRefillRow').style.display = 'none';
                 return;
             }
             wrap.style.display = '';
             capEl.className = '';
 
             const zones = ['zone-ok', 'zone-reserve', 'zone-alarm', 'zone-unknown'];
-            wrap.className = 'res-bar-wrap ' + (zones[d.res_zone] || 'zone-unknown');
+            wrap.className = 'res-bar-wrap ' + (zones[d.res_zone] || 'zone-unknown') +
+                             (d.res_estimated ? ' is-estimated' : '');
             const cap = d.res_capacity_ml || 1;
             const lowPct = Math.min(100, d.res_reserve_ml * 100 / cap);
             const alarmPct = Math.min(100, d.res_alarm_ml * 100 / cap);
-            const fillPct = d.res_reading ? Math.min(100, d.res_pct) : 0;
+            const fillPct = (d.res_reading || d.res_estimated) ? Math.min(100, d.res_pct) : 0;
             document.getElementById('resBarLow').style.width = lowPct + '%';
             document.getElementById('resBarLowFill').style.width = Math.min(fillPct, lowPct) + '%';
             document.getElementById('resBarAlarm').style.width = alarmPct + '%';
@@ -1615,16 +1642,28 @@ const char* DASHBOARD_HTML = R"rawliteral(
             capEl.textContent = 'Capacity: ' + fmtL(d.res_capacity_ml) + ' / ' + d.res_capacity_portions + ' doses';
 
             const notes = [];
+            const leftClass = d.res_zone === 2 ? 'is-alarm' : d.res_zone === 1 ? 'is-warn' : '';
             if (d.res_reading) {
                 leftEl.textContent = 'Left: \u2248 ' + fmtL(d.res_ml) + ' / ' + d.res_portions + ' doses';
-                if (d.res_zone === 2) notes.push('at the alarm level');
-                leftEl.className = d.res_zone === 2 ? 'is-alarm' : d.res_zone === 1 ? 'is-warn' : '';
+                leftEl.className = leftClass;
+            } else if (d.res_estimated) {
+                leftEl.textContent = 'Left: \u2265 ' + fmtL(d.res_ml) + ' / ' + d.res_portions + ' doses (estimate)';
+                leftEl.className = leftClass;
+                notes.push('no level reading ' + fmtAge(d.res_no_reading_s) + ' \u2014 minimum estimate');
             } else {
                 leftEl.textContent = 'Left: no reading';
                 leftEl.className = 'is-muted';
                 notes.push('level sensor ' + (d.level_sensor || '?'));
             }
+            if (d.reserve_empty) notes.unshift('RESERVOIR ALARM: ' + (d.reserve_alarm_text || '?') +
+                (d.res_reading ? ' \u2014 refill, then Cycle Reset' : ' \u2014 refill, then Reservoir refilled'));
+            else if (d.res_zone === 2) notes.push('at the alarm level');
+            if (d.res_hours_left > 0) notes.push('\u2248 ' + fmtAge(d.res_hours_left * 3600) + ' to the alarm level');
             if (d.level_settling) notes.push('settling after pump');
+            // Refill without a level reading — restarts the estimate from a full reservoir
+            // (not in the first minute after boot — readings come back within ~30 s)
+            document.getElementById('resRefillRow').style.display =
+                (!d.res_reading && d.res_no_reading_s >= 60) ? '' : 'none';
             note.textContent = notes.join(' \u00b7 ');
         }
 
@@ -1645,7 +1684,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
                     // Reserve state for the system badge
                     const hasReserveEmpty  = !!data.reserve_empty;
-                    const hasLowResWarning = !!data.reserve_low;
+                    const hasLowResWarning = !!data.reserve_low || !!data.reserve_no_reading;
                     updateReserveBar(data);
 
                     // Badges

@@ -76,6 +76,12 @@ void buzzerOK() {
     beep(500);
 }
 
+void buzzerConfirm() {
+    beep(80);
+    delay(80);
+    beep(80);
+}
+
 void buzzerCritical() {
     for (int i = 0; i < 4; i++) {
         beep(250);

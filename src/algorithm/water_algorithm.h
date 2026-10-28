@@ -8,7 +8,7 @@
 // WaterAlgorithm — maszyna stanów sterująca pompą top-off.
 //
 // Stany: IDLE → DEBOUNCING → PUMPING → LOGGING → IDLE
-//                                     ↘ STATE_ERROR (daily limit / red alert)
+//                                     ↘ STATE_ERROR (reservoir / daily limit / red alert)
 //
 // Algorytm alarmu (score-based):
 //   Każda dolewka liczy odchylenie d = (rate - EMA) / EMA.
@@ -16,8 +16,10 @@
 //   Przy d ≤ 0: alarm_score zanika (mnożnik P2).
 //   Strefy: score < zone_green → zielony, < zone_yellow → żółty, else → czerwony.
 //   Czerwona strefa → STATE_ERROR (pompa blokowana), alarm SOUND.
-//   Po resecie: alarmArmed = false — alarm nie odpali ponownie dopóki
-//   score nie spadnie poniżej zone_yellow (re-arm w zielonej/żółtej strefie).
+//   A reset of an error with the score in the red zone disarms the anomaly
+//   alarm for ALARM_DISARM_S (24 h) or until the score drops below zone_yellow,
+//   whichever comes first. The error and the disarm time are kept in FRAM.
+//   One reset for the GUI and the button (held RESET_HOLD_MS).
 // ============================================================
 
 class WaterAlgorithm {
@@ -42,10 +44,11 @@ private:
     // ---- EMA + alarm score (persystowane w FRAM) ----
     EmaBlock ema;
 
-    // ---- Alarm hystereza ----
-    // true  = alarm może odpalić przy wejściu w czerwoną strefę
-    // false = alarm wyciszony po resecie; re-arm gdy score < zone_yellow
-    bool alarmArmed;
+    // ---- Anomaly alarm disarm after a reset ----
+    // true  = the red zone raises ERROR_RED_ALERT
+    // false = disarmed until disarmUntilTs or the score < zone_yellow
+    bool     alarmArmed;
+    uint32_t disarmUntilTs;   // unix time, 0 = armed
 
     // ---- Obsługa błędów ----
     ErrorCode lastError;
@@ -66,6 +69,8 @@ private:
 
     void startErrorSignal(ErrorCode error);
     void checkResetButton();
+    void saveErrorState();
+    void loadErrorState();
 
     void loadConfigFromFRAM();
     void loadEmaFromFRAM();
@@ -101,10 +106,12 @@ public:
     const EmaBlock& getEma() const { return ema; }
 
     // ---- Alarm hystereza ----
-    bool isAlarmArmed() const { return alarmArmed; }
+    bool     isAlarmArmed()     const { return alarmArmed; }
+    uint32_t getDisarmUntilTs() const { return disarmUntilTs; }
 
     // ---- Reset / odzyskiwanie ----
-    void resetFromError();
+    // The only reset (GUI and button): error cleared, pump stopped, reserve alarm
+    // cleared when the level allows; false while logging a cycle
     bool resetSystem();
     bool resetCycleHistory();
     void resetRolling24h();

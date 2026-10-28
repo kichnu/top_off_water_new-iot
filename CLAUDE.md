@@ -116,7 +116,8 @@ Defined in `hardware/fram_controller.h`:
 - `0x0590-0x05A1`: EmaBlock (16B + 2B checksum)
 - `0x05A2-0x05C3`: ReservoirConfig incl. PumpCalibration (32B + 2B checksum), magic=0xB3
 - `0x05C4-0x05D5`: ReserveTrack (16B + 2B checksum) — last level reading, water pumped since, alarm latch, magic=0xC5
-- `0x05D6-0x05FF`: free
+- `0x05D6-0x05DF`: AlgErrorState (8B + 2B checksum) — latched ATO error, anomaly alarm disarm time, magic=0xE7
+- `0x05E0-0x05FF`: free
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 - `0x1100-0x290F`: Level sensor event log (16B header + 48 × 128B), diagnostics
 
@@ -125,7 +126,7 @@ Defined in `hardware/fram_controller.h`:
 Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
 (2,3,4,5,6,7,8,9,10,20,21):
 - GPIO 3:  `WATER_SENSOR_PIN` — ATO float sensor (INPUT_PULLUP, active LOW)
-- GPIO 4:  `RESET_PIN` — provisioning button (INPUT_PULLUP, active LOW, hold 5s)
+- GPIO 4:  `RESET_PIN` — provisioning button at boot (hold 5s); in operation hold 3 s = Cycle Reset
 - GPIO 5:  `I2C_SDA_PIN` — I2C bus (DS3231 RTC + FRAM MB85RC256V + VL53L4CD ToF)
 - GPIO 6:  `I2C_SCL_PIN` — I2C bus
 - GPIO 7:  `BUZZER_PIN` — buzzer (**active HIGH**)
@@ -207,7 +208,7 @@ All POST handlers use form-encoded body — never JSON for POST requests.
 
 ### Midnight Auto-Restart
 
-System automatically restarts at the next local midnight (`main.cpp`, computed once at boot from RTC time; guarded by a 30-minute minimum uptime and a valid RTC year). ATO pump safely stopped before restart.
+System automatically restarts at the next local midnight (`main.cpp`, computed once at boot from RTC time; guarded by a 30-minute minimum uptime and a valid RTC year). Postponed while the pump runs, an ATO cycle, a manual session or a calibration is in progress. Latched errors survive it (FRAM `AlgErrorState`, `ReserveTrack`).
 
 ### Timezone Handling
 

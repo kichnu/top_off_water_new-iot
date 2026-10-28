@@ -115,6 +115,12 @@ Każdy krok musi się budować (`pio run -e seeed_xiao_esp32c3`) i kończyć oso
 
 Kolejność 1–3 jest sztywna. Od 4 dalej można przestawiać.
 
+Postęp (2026-10-28): kroki 1–3 zrobione i sprawdzone na sprzęcie (pasek, progi). Krok 4 zrobiony
+(nietestowany na HW): błąd ATO i czas rozbrojenia w FRAM (`AlgErrorState` 0x05D6), jeden
+`resetSystem()` dla GUI i przycisku, przycisk — przytrzymanie 3 s + 2 krótkie piknięcia,
+rozbrojenie alarmu anomalii po resecie w czerwonej strefie: 24 h albo do score < zone_yellow
+(decyzja 2026-10-28), restart nocny odkładany przy pompie / cyklu / sesji ręcznej / kalibracji.
+
 ## 5. Weryfikacja
 
 - Scenariusze (`docs/inject_scenario.py` / `ema_simulation.py`, tam gdzie da się zasymulować):

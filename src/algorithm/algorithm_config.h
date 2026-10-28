@@ -99,6 +99,22 @@ struct EmaBlock {
 static_assert(sizeof(EmaBlock) == 16, "EmaBlock must be exactly 16 bytes");
 
 // ============================================================
+// ATO error latch — persisted in FRAM (survives the midnight restart and
+// power loss), 8 bytes
+// ============================================================
+#define ALG_ERROR_STATE_MAGIC     0xE7
+#define ALARM_DISARM_S            86400UL   // reset in the red zone disarms the anomaly alarm this long
+#define RESET_HOLD_MS              3000UL   // reset button held this long (also the debounce)
+
+struct AlgErrorState {
+    uint8_t  last_error;          // ErrorCode, ERROR_NONE = no latched error
+    uint8_t  magic;               // ALG_ERROR_STATE_MAGIC
+    uint8_t  _pad[2];
+    uint32_t disarm_until_ts;     // unix time; 0 = anomaly alarm armed
+};
+static_assert(sizeof(AlgErrorState) == 8, "AlgErrorState must be exactly 8 bytes");
+
+// ============================================================
 // KONFIGURACJA ALGORYTMU — persystowana w FRAM, 40 bajtów
 // ============================================================
 struct TopOffConfig {

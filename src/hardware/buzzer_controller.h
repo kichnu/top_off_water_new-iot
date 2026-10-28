@@ -31,5 +31,6 @@ void setBuzzerMode(BuzzerMode mode);
 void buzzerPowerOn();       // 1000 ms — call first in setup()
 void buzzerOK();            // short + long — boot complete
 void buzzerCritical();      // 4x 250 ms — critical boot error
+void buzzerConfirm();       // 2x 80 ms — reset button accepted
 
 #endif // BUZZER_CONTROLLER_H

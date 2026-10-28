@@ -7,6 +7,7 @@
 #include "../hardware/fram_controller.h"
 #include "../hardware/reserve_controller.h"
 #include "../hardware/pump_calibration.h"
+#include "../hardware/buzzer_controller.h"
 #include "../config/config.h"
 #include "algorithm_config.h"
 #include <math.h>
@@ -41,8 +42,9 @@ WaterAlgorithm::WaterAlgorithm() {
     ema.alarm_score    = 0.0f;
     ema.bootstrap_count = 0;
 
-    alarmArmed = true;
-    lastError  = ERROR_NONE;
+    alarmArmed    = true;
+    disarmUntilTs = 0;
+    lastError     = ERROR_NONE;
 
     systemWasDisabled = false;
     cycleLogged       = false;
@@ -101,6 +103,8 @@ void WaterAlgorithm::initFromFRAM() {
             ema.ema_rate_ml_h = config.initial_ema;
         }
     }
+
+    loadErrorState();
 
     LOG_INFO("====================================");
     LOG_INFO("WaterAlgorithm: initFromFRAM done");
@@ -310,10 +314,12 @@ void WaterAlgorithm::finishPumpCycle() {
         if (ema.bootstrap_count < 255) ema.bootstrap_count++;
     }
 
-    // Re-arm: jeśli score wróciło do żółtej lub zielonej strefy
-    if (!alarmArmed && ema.alarm_score < config.zone_yellow) {
-        alarmArmed = true;
-        LOG_INFO("ALARM re-armed (score=%.2f < zone_yellow=%.2f)", ema.alarm_score, config.zone_yellow);
+    // Re-arm: the score is back below the red zone, or the disarm time is over
+    if (!alarmArmed && (ema.alarm_score < config.zone_yellow || nowTs >= disarmUntilTs)) {
+        alarmArmed    = true;
+        disarmUntilTs = 0;
+        saveErrorState();
+        LOG_INFO("ALARM re-armed (score=%.2f, zone_yellow=%.2f)", ema.alarm_score, config.zone_yellow);
     }
 
     uint8_t alertLevel = calculateAlertLevel();
@@ -513,54 +519,90 @@ void WaterAlgorithm::startErrorSignal(ErrorCode error) {
     lastError    = error;
     currentState = STATE_ERROR;
     stateStartMs = millis();
+    saveErrorState();
     LOG_WARNING("Error: code=%d → STATE_ERROR", (int)error);
+}
+
+// Error latch + disarm time in FRAM — a restart (midnight, power loss) keeps them
+void WaterAlgorithm::saveErrorState() {
+    AlgErrorState st = {};
+    st.last_error      = (uint8_t)lastError;
+    st.magic           = ALG_ERROR_STATE_MAGIC;
+    st.disarm_until_ts = alarmArmed ? 0 : disarmUntilTs;
+    framBusy = true;
+    saveAlgErrorStateToFRAM(st);
+    framBusy = false;
+}
+
+void WaterAlgorithm::loadErrorState() {
+    AlgErrorState st;
+    framBusy = true;
+    bool ok = loadAlgErrorStateFromFRAM(st);
+    framBusy = false;
+    if (!ok) return;
+    disarmUntilTs = st.disarm_until_ts;
+    alarmArmed    = (disarmUntilTs == 0);
+    if (st.last_error != ERROR_NONE) {
+        lastError    = (ErrorCode)st.last_error;
+        currentState = STATE_ERROR;
+        stateStartMs = millis();
+        LOG_WARNING("WaterAlgorithm: error %d restored from FRAM → STATE_ERROR (reset required)", st.last_error);
+    }
+    if (!alarmArmed) {
+        LOG_INFO("WaterAlgorithm: anomaly alarm disarmed until ts=%lu", (unsigned long)disarmUntilTs);
+    }
 }
 
 // ============================================================
 // RESET BUTTON
 // ============================================================
 
+// Held RESET_HOLD_MS without a break (that is also the debounce) — one reset
+// per press, confirmed by two short beeps
 void WaterAlgorithm::checkResetButton() {
     static uint32_t pressStart = 0;
-    static bool     wasPressed = false;
+    static bool     done       = false;
 
-    bool pressed = (digitalRead(RESET_PIN) == LOW);
-
-    if (pressed && !wasPressed) {
-        pressStart = millis();
-        wasPressed = true;
-    } else if (!pressed && wasPressed) {
-        wasPressed = false;
-        if (currentState == STATE_ERROR) {
-            resetFromError();
-        }
+    if (digitalRead(RESET_PIN) != LOW) {
+        pressStart = 0;
+        done       = false;
+        return;
     }
+    if (pressStart == 0) pressStart = millis() | 1u;   // |1 — 0 means released
+    if (done || millis() - pressStart < RESET_HOLD_MS) return;
+    done = true;
+
+    if (currentState != STATE_ERROR && !isReserveEmpty()) {
+        LOG_INFO("Reset button: nothing to reset");
+        return;
+    }
+    LOG_INFO("Reset button held %lu ms — reset", (unsigned long)RESET_HOLD_MS);
+    if (resetSystem()) buzzerConfirm();
 }
 
 // ============================================================
 // RESET / RECOVERY
 // ============================================================
 
-void WaterAlgorithm::resetFromError() {
-    clearReserveLatch();   // reserve alarm cleared only with water back, else it stays
-    lastError    = ERROR_NONE;
-    currentState = STATE_IDLE;
-    stateStartMs = millis();
-    alarmArmed   = false;  // wymagany re-arm przez żółtą/zieloną strefę
-    resetSensorProcess();
-    LOG_INFO("Error cleared — returned to IDLE, alarmArmed=false");
-}
-
 bool WaterAlgorithm::resetSystem() {
     if (currentState == STATE_LOGGING) return false;
 
     if (isPumpActive()) stopPump();
 
-    clearReserveLatch();
+    clearReserveLatch();   // reserve alarm cleared only with water back, else it stays
+    // Resetting an error with the score in the red zone: disarm the anomaly alarm
+    // for a while, otherwise the next cycle raises it again at once
+    if (currentState == STATE_ERROR && ema.alarm_score >= config.zone_yellow) {
+        alarmArmed    = false;
+        disarmUntilTs = (uint32_t)getUnixTimestamp() + ALARM_DISARM_S;
+        LOG_INFO("Anomaly alarm disarmed for %lu h or until score < %.1f",
+                 (unsigned long)(ALARM_DISARM_S / 3600), config.zone_yellow);
+    }
     lastError    = ERROR_NONE;
     currentState = STATE_IDLE;
     stateStartMs = millis();
     resetSensorProcess();
+    saveErrorState();
     LOG_INFO("System reset to IDLE");
     return true;
 }
@@ -577,12 +619,14 @@ bool WaterAlgorithm::resetCycleHistory() {
     lastTopOffTimestamp = 0;
     rolling24hVolumeMl  = 0;
     alarmArmed          = true;
+    disarmUntilTs       = 0;
     totalCycleCount     = 0;
 
     framBusy = true;
     bool ok = clearTopOffRingBuffer();
     if (ok) saveEmaToFRAM();  // persist reset EMA — without this, restart restores old EMA
     framBusy = false;
+    saveErrorState();         // armed again
 
     LOG_INFO("WaterAlgorithm: cycle history and EMA reset");
     return ok;
@@ -625,7 +669,7 @@ String WaterAlgorithm::getStateDescription() const {
         case STATE_LOGGING:
             return "Logging cycle data";
         case STATE_ERROR:
-            if (lastError == ERROR_LOW_RESERVOIR) return "Reservoir empty — refill and reset";
+            if (lastError == ERROR_LOW_RESERVOIR) return "Reservoir alarm — refill and reset";
             if (lastError == ERROR_DAILY_LIMIT)   return "Daily limit reached — reset required";
             if (lastError == ERROR_RED_ALERT)     return "Rate anomaly — reset required";
             return String("Error: code ") + (int)lastError + " — reset required";

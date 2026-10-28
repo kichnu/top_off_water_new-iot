@@ -252,12 +252,20 @@ void loop() {
     static unsigned long lastUpdate = 0;
     unsigned long now = millis();
 
-    // DAILY RESTART CHECK — o lokalnej północy (00:00)
-    // Guard: minimalny uptime 30 min (zabezpieczenie przed pętlą restart jeśli start tuż przed północą)
-    // Postponed while a calibration is in progress
-    if (g_restartAtTs > 0 && now > 1800000UL && !isPumpCalibrationActive()) {
+    // DAILY RESTART CHECK — at local midnight (00:00)
+    // Guard: min uptime 30 min (no restart loop when booted just before midnight).
+    // Postponed while the pump runs, an ATO cycle, a manual session or a calibration
+    // is in progress — a cut cycle would miss the 24 h counter and the history
+    if (g_restartAtTs > 0 && now > 1800000UL) {
         uint32_t nowTs = (uint32_t)getUnixTimestamp();
-        if (nowTs >= g_restartAtTs) {
+        bool busy = isPumpActive() || waterAlgorithm.isInCycle() || isDirectPumpMode() ||
+                    isPumpCalibrationActive();
+        static bool deferLogged = false;
+        if (nowTs >= g_restartAtTs && busy && !deferLogged) {
+            deferLogged = true;
+            LOG_INFO("Daily restart postponed — pump / cycle / manual session / calibration in progress");
+        }
+        if (nowTs >= g_restartAtTs && !busy) {
             Serial.println("=== DAILY RESTART: midnight reached ===");
 
             if (isPumpActive()) stopPump();

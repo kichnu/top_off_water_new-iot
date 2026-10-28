@@ -1076,3 +1076,28 @@ bool loadReserveTrackFromFRAM(ReserveTrack& t) {
     return true;
 }
 
+bool saveAlgErrorStateToFRAM(const AlgErrorState& st) {
+    if (!framInitialized) return false;
+
+    fram.write(FRAM_ADDR_ALG_ERROR, (uint8_t*)&st, sizeof(AlgErrorState));
+    uint16_t chksum = calculateChecksum((uint8_t*)&st, sizeof(AlgErrorState));
+    fram.write(FRAM_ADDR_ALG_ERROR_CHKSUM, (uint8_t*)&chksum, 2);
+    return true;
+}
+
+bool loadAlgErrorStateFromFRAM(AlgErrorState& st) {
+    if (!framInitialized) return false;
+
+    AlgErrorState tmp;
+    fram.read(FRAM_ADDR_ALG_ERROR, (uint8_t*)&tmp, sizeof(AlgErrorState));
+    uint16_t stored = 0;
+    fram.read(FRAM_ADDR_ALG_ERROR_CHKSUM, (uint8_t*)&stored, 2);
+
+    if (tmp.magic != ALG_ERROR_STATE_MAGIC ||
+        calculateChecksum((uint8_t*)&tmp, sizeof(AlgErrorState)) != stored) {
+        return false;
+    }
+    st = tmp;
+    return true;
+}
+

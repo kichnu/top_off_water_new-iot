@@ -75,6 +75,7 @@ static uint8_t  g_pollErr        = 0;       // last failure: endTransmission() c
 static uint8_t  g_lastHv         = 0xFF;    // last GPIO__TIO_HV_STATUS read successfully
 // Self-reset detection (sensor reboots on its own, e.g. on a transient from the pump switching)
 static uint8_t  g_refInt         = 0x20;    // SYSTEM__INTERRUPT as written by init()
+static uint8_t  g_refStart       = 0x21;    // SYSTEM_START readback while ranging (continuous)
 static bool     g_pumpCheck      = false;   // self-reset check pending after a pump stop
 static uint32_t g_pumpRuns       = 0;       // pump runs checked since boot
 static uint32_t g_pumpResets     = 0;       // of which ended with a self-reset
@@ -146,6 +147,7 @@ static bool tryInit() {
     g_tof.startContinuous();
     uint8_t v, err;
     if (readRegChecked(VL53L4CD::SYSTEM__INTERRUPT, v, err)) g_refInt = v;
+    if (readRegChecked(VL53L4CD::SYSTEM_START, v, err)) g_refStart = v;
     return true;
 }
 
@@ -225,13 +227,15 @@ static void startSeries();
 // A sensor reboot (supply or XSHUT transient) leaves it answering on I2C, but with
 // the default config and ranging stopped (seen as start=00 int=00 in the no-data
 // snapshot). SYSTEM__INTERRUPT is written once by init(), so a changed value means
-// the config is gone — re-init right away instead of waiting for a FAULT.
+// the config is gone. A variant keeps SYSTEM__INTERRUPT but stops ranging
+// (start=00 int=20 rs=00), so SYSTEM_START is compared too — either change
+// means re-init right away instead of waiting for a FAULT.
 // Returns true when a self-reset was detected
 static bool checkSelfReset(bool afterPump) {
     uint8_t start, intr, err;
     if (!readRegChecked(VL53L4CD::SYSTEM__INTERRUPT, intr, err)) return false;
-    if (intr == g_refInt) return false;
-    if (!readRegChecked(VL53L4CD::SYSTEM_START, start, err)) start = 0xFF;
+    if (!readRegChecked(VL53L4CD::SYSTEM_START, start, err)) return false;
+    if (intr == g_refInt && start == g_refStart) return false;
     g_selfResets++;
     if (afterPump) g_pumpResets++;
     uint32_t now = millis();

@@ -741,6 +741,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         .res-note:empty { display: none; }
 
+        .res-estimate { color: #f97316; }
+
         /* Source-water reserve: level bar from the level sensor (0 = bottom,
            100% = marker); the reserve range is yellow, the alarm range red */
         .res-bar-wrap {
@@ -1628,6 +1630,20 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 .catch(function(e) { console.error('reserve refill error:', e); });
         }
 
+        // Text with every word "estimate" highlighted (DOM nodes — no HTML from the data)
+        function setTextMarkEstimate(el, text) {
+            el.textContent = '';
+            text.split('estimate').forEach(function(part, i) {
+                if (i > 0) {
+                    const span = document.createElement('span');
+                    span.className = 'res-estimate';
+                    span.textContent = 'estimate';
+                    el.appendChild(span);
+                }
+                if (part) el.appendChild(document.createTextNode(part));
+            });
+        }
+
         function updateReserveBar(d) {
             if (d.res_capacity_ml === undefined) return;
             const wrap = document.getElementById('resBarWrap');
@@ -1674,7 +1690,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 leftEl.textContent = 'Left: \u2248 ' + fmtL(d.res_ml) + ' / ' + d.res_portions + ' doses';
                 leftEl.className = leftClass;
             } else if (d.res_estimated) {
-                leftEl.textContent = 'Left: \u2265 ' + fmtL(d.res_ml) + ' / ' + d.res_portions + ' doses (estimate)';
+                setTextMarkEstimate(leftEl, 'Left: \u2265 ' + fmtL(d.res_ml) + ' / ' + d.res_portions + ' doses (estimate)');
                 leftEl.className = leftClass;
                 notes.push('no level reading ' + fmtAge(d.res_no_reading_s) + ' \u2014 minimum estimate');
             } else {
@@ -1691,7 +1707,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             // (not in the first minute after boot — readings come back within ~30 s)
             document.getElementById('resRefillRow').style.display =
                 (!d.res_reading && d.res_no_reading_s >= 60) ? '' : 'none';
-            note.textContent = notes.join(' \u00b7 ');
+            setTextMarkEstimate(note, notes.join(' \u00b7 '));
         }
 
         let lastStatus = null;

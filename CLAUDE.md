@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, source-water reservoir monitoring (VL53L4CD level estimate + float switch for the empty stop), fixed-dose pump algorithm with EMA trend tracking, web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates. Full upload commands (serial + OTA): see `README`.
+ESP32-C3 automated water top-off (ATO) system for aquarium management. Built with PlatformIO and Arduino framework, targeting Seeed Xiao ESP32-C3. Features single float sensor detection, source-water reservoir monitoring (VL53L4CD level estimate; no empty-reservoir stop yet), fixed-dose pump algorithm with EMA trend tracking, web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates. Full upload commands (serial + OTA): see `README`.
 
 ## Build Commands
 
@@ -59,7 +59,7 @@ hardware/           Hardware abstraction layer
   level_test.*         LVLTEST diagnostic level test (kept for diagnostics)
   pump_calibration.*   Guided portion calibration (4 runs, mean portion time in ms, FRAM in ReservoirConfig)
   pump_controller.*    ATO pump relay control (auto + direct/manual), run end cut by esp_timer (ms)
-  reserve_controller.* Source-water reserve: level-sensor estimate (info) + reservoir float switch (stop)
+  reserve_controller.* Source-water reserve: level-sensor estimate (info)
   rtc_controller.*     DS3231 RTC with NTP sync
   water_sensors.*      Float sensor debouncing (ATO)
 
@@ -93,7 +93,7 @@ Located in `algorithm/water_algorithm.cpp`, states defined in `algorithm_config.
 
 ```
 STATE_IDLE → STATE_DEBOUNCING → STATE_PUMPING → STATE_LOGGING → STATE_IDLE
-Any state → (reservoir empty — float switch / daily limit / red alert) → STATE_ERROR
+Any state → (daily limit / red alert) → STATE_ERROR
 ```
 
 Direct/manual pump control (`/api/pump/direct-on`) bypasses this state machine
@@ -129,14 +129,13 @@ Defined in `hardware/hardware_pins.h`. Only 11 GPIOs available on this board
 - GPIO 6:  `I2C_SCL_PIN` — I2C bus
 - GPIO 7:  `BUZZER_PIN` — buzzer (**active HIGH**)
 - GPIO 10: `ATO_PUMP_RELAY_PIN` — ATO pump relay (**active HIGH**: HIGH = ON, LOW = OFF)
-- GPIO 8:  `RESERVOIR_FLOAT_PIN` — reservoir float switch (INPUT_PULLUP, LOW = no water);
-  temporarily disabled (`RESERVE_FLOAT_ENABLED = 0` in `reserve_controller.h`) until installed
 - GPIO 20: `LEVEL_XSHUT_PIN` — VL53L4CD XSHUT (open-drain only, active LOW; module pull-up to 2.8 V)
-- Free: GPIO 2, 9, 21 (21 = UART0 TX, driven HIGH by the ROM boot log — no switch to GND)
+- Free: GPIO 2, 8, 9, 21 (21 = UART0 TX, driven HIGH by the ROM boot log — no switch to GND)
 
 > Note: output levels are defined as `PUMP_RELAY_ON/OFF` and `BUZZER_LEVEL_ON/OFF` in
 > `hardware_pins.h`. Reserve: the VL53L4CD level is an estimate (~±2 cm, information only,
-> no alarms); the pump stop on an empty reservoir is the float switch on GPIO 8.
+> no alarms). The reservoir float switch was removed; there is no empty-reservoir pump stop until
+> the ToF alarm level is in place (`docs/AUDYT_I_PLAN_REZERWY_TOF_1.0.md`).
 > GPIO 9 is the BOOT strap pin (LOW during boot → download mode) — must stay unconnected.
 
 ### Key API Endpoints (Production Mode)

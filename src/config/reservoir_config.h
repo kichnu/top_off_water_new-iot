@@ -13,7 +13,7 @@
 // HIDDEN — % of the full capacity kept below "empty" for pump safety (intake
 //          height); never shown to the user, the usable range ends above it.
 // LOW    — % of the usable capacity shown as the permanent yellow reserve range.
-// Both are information only (level sensor); the pump stop is the float switch.
+// Both are information only (level sensor); there is no empty-reservoir stop yet.
 #define RESERVE_LOW_PCT_FIXED          30
 #define RESERVE_HIDDEN_PCT_FIXED       10
 

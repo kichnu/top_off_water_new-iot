@@ -1,6 +1,6 @@
 # ESP32-C3 Automated Water Top-Off System
 
-Embedded system for automated aquarium water level management. Built on Seeed XIAO ESP32-C3 with PlatformIO/Arduino framework. Features a redundant float sensor pair for ATO detection, source-water reservoir monitoring (ToF level sensor + empty-reservoir float switch), a fixed-dose pumping algorithm with EMA rate tracking and a score-based alarm, buzzer feedback, a web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates.
+Embedded system for automated aquarium water level management. Built on Seeed XIAO ESP32-C3 with PlatformIO/Arduino framework. Features a redundant float sensor pair for ATO detection, source-water reservoir monitoring (ToF level sensor), a fixed-dose pumping algorithm with EMA rate tracking and a score-based alarm, buzzer feedback, a web dashboard, captive portal provisioning, and OTA (ArduinoOTA) firmware updates.
 
 ## Hardware
 
@@ -12,7 +12,7 @@ Embedded system for automated aquarium water level management. Built on Seeed XI
 - GPIO 4 — `RESET_PIN`: provisioning button (INPUT_PULLUP, active LOW; hold 5s to enter provisioning)
 - GPIO 7 — `BUZZER_PIN`: buzzer (active HIGH)
 - GPIO 20 — `LEVEL_XSHUT_PIN`: VL53L4CD XSHUT (open-drain, active LOW) — hardware reset of the level sensor at boot and on a sensor fault
-- GPIO 8 — `RESERVOIR_FLOAT_PIN`: source-water reservoir float switch (INPUT_PULLUP, LOW = no water). Temporarily disabled in firmware (`RESERVE_FLOAT_ENABLED = 0` in `reserve_controller.h`) until the switch is installed.
+- Free: GPIO 2, 8, 9 (BOOT strap — leave unconnected), 21
 
 **I2C bus** (SDA=GPIO 5, SCL=GPIO 6):
 - VL53L4CD ToF sensor (0x29) — reservoir water level (reserve estimate, information only)
@@ -30,7 +30,7 @@ Non-blocking FreeRTOS task (`src/hardware/buzzer_controller.*`), ticking every 5
 |---|---|---|
 | `BUZZER_OFF` | silent | default |
 | `BUZZER_PROVISIONING` | tick 0 ON, 12s cycle | captive portal active |
-| `BUZZER_ALARM` | two 50 ms beeps, every 120 s | reservoir empty (float switch) or any ATO error |
+| `BUZZER_ALARM` | two 50 ms beeps, every 120 s | any ATO error |
 
 Boot feedback: `buzzerPowerOn()` (1s tone at start of `setup()`), `buzzerOK()` (short+long — boot complete, all systems OK), `buzzerCritical()` (4× 250ms — critical boot error: FRAM init failed, WiFi/RTC not working, etc).
 
@@ -64,11 +64,11 @@ STATE_LOGGING     save TopOffRecord + EmaBlock to FRAM (5s)
 STATE_IDLE
 
 Any state → STATE_ERROR when:
-  - the reservoir float switch reports no water when an auto cycle would start
   - rolling 24h volume >= daily_limit_ml
   - alarm_score >= zone_yellow after a cycle (red alert)
-STATE_ERROR requires explicit Cycle Reset (web button or reset button); a
-reservoir-empty alarm clears only once the float switch is back up.
+STATE_ERROR requires explicit Cycle Reset (web button or reset button).
+ERROR_LOW_RESERVOIR is defined but not raised yet: there is no
+empty-reservoir stop until the ToF alarm level is in place.
 
 Direct/manual pump control bypasses this state machine entirely (separate
 code path in pump_controller, ignores system-disable and daily limit).
@@ -82,7 +82,7 @@ System Control → **Pump ON** / **OFF** (`/api/pump/direct-on`, `/api/pump/dire
 - Portions are separated by a fixed 5 s pause (`MANUAL_PORTION_PAUSE_MS`) — it only marks the portion-wise pumping.
 - OFF finishes the running portion and drops the rest of the queue; OFF during a pause ends the session at once. Emergency stop (`/api/pump/stop`) cuts the running portion immediately.
 - Manual portions bypass the algorithm, Service Mode and the daily limit; they are not counted in the 24 h volume and not logged in the cycle history (they would distort the EMA).
-- Start is blocked when the reservoir is empty (float switch) or a pump calibration is running; a new portion from the queue does not start once the float reports no water (a running one finishes). While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
+- Start is blocked while a pump calibration is running. While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
 
 ### EMA / Alarm Score
 
@@ -110,12 +110,11 @@ No level measurement during the calibration. The pump end is cut by a one-shot `
 
 `src/hardware/reserve_controller.*` (see `docs/RESERVE_LEVEL_SENSOR_VL53L4CD.md`):
 - **Level sensor (information only).** Volume = reservoir floor area (`length_mm × width_mm`) × water height (`sensor_to_bottom_mm` − reading). The bottom 10% of the capacity up to the marker is a hidden safety bottom; the dashboard shows the part above it as a level bar with ml, % and the estimated number of portions. The bottom 30% of the usable capacity is the yellow reserve range (dashboard only, no buzzer). Expected error ~±2 cm (water surface reflections, field of view hitting the walls), so the sensor raises no alarms.
-- **Float switch (pump stop).** LOW for 3 s → reservoir empty: `BUZZER_ALARM`, red badge, no new auto or manual portion (a running one finishes). Latched until Cycle Reset / the reset button with the float back up. Currently disabled (`RESERVE_FLOAT_ENABLED = 0`).
+- **No empty-reservoir stop yet.** The reservoir float switch was removed; a pump stop on a configurable ToF alarm level (with a fail-safe policy for sensor faults) is planned. Until then nothing stops the pump when the reservoir runs dry.
 
 ## Safety
 
 - **Daily volume limit** (`daily_limit_ml`, default 2000 ml) — rolling 24h window; exceeding it → `STATE_ERROR`
-- **Reservoir empty** (float switch) — blocks new pumping (auto and manual) until the float is back up and Cycle Reset
 - **Midnight auto-restart** — firmware restarts at 00:00 local time daily (guarded: only after 30 min uptime, and only if RTC has a valid time); ATO pump stopped safely first
 - **Service Mode at boot** — 15-minute grace period before auto-operation begins
 - **OTA safety** — pump stopped and system disabled in `ArduinoOTA.onStart()`, before the flash erase that would otherwise block the CPU for several seconds with the pump left in whatever state it was in
@@ -301,8 +300,8 @@ Credentials are AES-256 encrypted before writing to FRAM. To reconfigure, repeat
 | RTC battery warning | Replace CR2032 in DS3231 module |
 | Auth fails after FRAM wipe | Re-run provisioning — credentials stored only in FRAM |
 | Pump runs but no water | Check tube connections, pump direction, run calibration |
-| Repeated `BUZZER_ALARM` | Reservoir empty (float switch) or an ATO error — refill / resolve the cause and press Cycle Reset |
-| `STATE_ERROR` in dashboard | Daily limit, red alert, or empty reservoir — resolve cause, press Cycle Reset |
+| Repeated `BUZZER_ALARM` | An ATO error — resolve the cause and press Cycle Reset |
+| `STATE_ERROR` in dashboard | Daily limit or red alert — resolve cause, press Cycle Reset |
 | Pump timing wrong | Run Settings → Pump Calibration & Single Dose (4 portions into a vessel with a mark) |
 | OTA upload fails: `Authentication Failed` | `OTA_PASSWORD` build flag and `--auth` flag must match — re-export in the same shell command as `pio run` |
 | OTA upload times out at 0% | Partition table only has one app slot — check `board_build.partitions` is `min_spiffs.csv`, not `huge_app.csv` |
@@ -328,7 +327,7 @@ src/
     level_sensor.*          VL53L4CD ToF reservoir level (non-blocking sample series)
     pump_calibration.*      Guided portion calibration (4 runs, mean time in ms)
     pump_controller.*       ATO pump relay control (auto + direct/manual)
-    reserve_controller.*    Source-water reserve: level-sensor estimate + reservoir float switch
+    reserve_controller.*    Source-water reserve: level-sensor estimate
     rtc_controller.*        DS3231 RTC + NTP sync + internal fallback
     water_sensors.*         Float sensor debouncing
     buzzer_controller.*     FreeRTOS buzzer task, priority-based modes

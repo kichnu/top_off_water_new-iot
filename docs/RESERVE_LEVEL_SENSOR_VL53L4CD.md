@@ -8,11 +8,9 @@ Testy fizyczne czujnika: `~/Dokumenty/My_apps/TOOLS/distance_sensor_pololu/WNIOS
 
 ## ⚠ Przypomnienia (do zrobienia)
 
-- **Pływak rezerwy wyłączony w firmware**: `RESERVE_FLOAT_ENABLED = 0` w
-  `src/hardware/reserve_controller.h`. Po zamontowaniu pływaka na GPIO 8 (do GND, LOW = brak
-  wody) ustawić na 1, zbudować, sprawdzić log startu („Reserve float switch on GPIO 8: HIGH”)
-  i przetestować: opuszczenie pływaka → po 3 s alarm + blokada porcji; podniesienie → alarm
-  trwa do Cycle Reset. Do tego czasu NIC nie zatrzymuje pompy przy pustym zbiorniku.
+- **Brak stopu pompy przy pustym zbiorniku.** Pływak rezerwy usunięty z kodu (decyzja
+  2026-10-25, krok 1 planu `AUDYT_I_PLAN_REZERWY_TOF_1.0.md`). Stop na poziomie alarmowym z ToF
+  — krok 3 tamtego planu. Do tego czasu NIC nie zatrzymuje pompy przy pustym zbiorniku.
 - **Test `LVLTEST` (`level_test.*`) zostaje** — narzędzie diagnostyczne czujnika; usunąć dopiero,
   gdy przestanie być potrzebny.
 
@@ -20,7 +18,8 @@ Testy fizyczne czujnika: `~/Dokumenty/My_apps/TOOLS/distance_sensor_pololu/WNIOS
 
 Informacja o ilości wody w zbiorniku zasilającym pompę ATO: czujnik odległości do lustra wody →
 wysokość wody → objętość (pole dna × wysokość) → szacunkowa liczba porcji jako podpowiedź dla
-użytkownika. Bez alarmów z czujnika. Zatrzymanie pompy przy pustym zbiorniku — pływak.
+użytkownika. Bez alarmów z czujnika. Zatrzymanie pompy przy pustym zbiorniku — dawniej pływak (usunięty),
+w planie poziom alarmowy na ToF (`AUDYT_I_PLAN_REZERWY_TOF_1.0.md`).
 
 ## 2. Sprzęt i zbiornik
 
@@ -32,9 +31,7 @@ użytkownika. Bez alarmów z czujnika. Zatrzymanie pompy przy pustym zbiorniku �
 - Zbiornik testowy: 282 × 202 mm, ścianki pionowe (56,96 ml/mm), czujnik 470 mm nad dnem,
   znacznik (maksymalny poziom) 380 mm od dna. Przegroda z małym otworem — 2 min ciszy
   pomiarowej po pompie (`LEVEL_PUMP_QUIET_MS`).
-- Pływak rezerwy: GPIO 8 (strap, ale stan niski ma znaczenie tylko w trybie download przy
-  GPIO 9 = LOW), INPUT_PULLUP, LOW = brak wody. GPIO 20 zajęte przez XSHUT czujnika. Nie GPIO 21: ROM wysyła tam log startowy (TX w stanie HIGH), zamknięty pływak do
-  GND zwierałby wyjście.
+- Pływak rezerwy (GPIO 8) usunięty 2026-10-25 — GPIO 8 wolne.
 
 ## 3. Dokładność czujnika — wnioski z testów (2026-10-17)
 
@@ -78,7 +75,7 @@ bez automatycznego powrotu do Auto.
 - Średnia z 4 (4 × porcja): błąd zatrzymania rozkłada się na większą objętość — nie jest to
   pomiar super dokładny, ale lepszy niż pojedynczy. Nie uwzględnia zmiany wydajności pompy
   przy pełnym vs prawie pustym zbiorniku (słup wody).
-- Warunek startu: pływak nie zgłasza braku wody; jeśli czujnik ma odczyt — szacunek ≥ 4 + 1 porcji.
+- Warunek startu: jeśli czujnik ma odczyt — szacunek ≥ 4 + 1 porcji.
 - Przebieg > 300 s albo zatrzymanie pompy spoza kalibracji → przerwanie procedury.
 - Bez kalibracji dla bieżącej porcji (nowy sprzęt albo kalibracja innej porcji) czas porcji =
   stałe 5 s (`DEFAULT_PORTION_MS`) — krótko i bezpiecznie; zapisane ml/s może nie istnieć
@@ -95,8 +92,8 @@ bez automatycznego powrotu do Auto.
   pompowania porcjami; `portion_pause_s` z FRAM nieużywane.
 - OFF dokańcza bieżącą porcję i zeruje kolejkę; OFF w przerwie kończy od razu. Emergency stop
   (`/api/pump/stop`) przerywa porcję natychmiast.
-- Blokady startu bez zmian: pusta rezerwa (`isReserveEmpty`) i trwająca kalibracja. Pływak jak
-  dotąd: nowa porcja z kolejki nie startuje, rozpoczęta się kończy.
+- Blokada startu: trwająca kalibracja. `isReserveEmpty()` (dawniej pływak) na razie zawsze
+  false — wróci ze stopem na ToF.
 - Porcje ręczne omijają algorytm, Service Mode i limit dobowy; nie liczą się do „Added in 24h”
   i nie trafiają do historii cykli (zaburzałyby EMA).
 - W trakcie sesji (porcje + przerwy) cykl ATO jest odkładany, kalibracja nie startuje.
@@ -110,22 +107,21 @@ bez automatycznego powrotu do Auto.
 - Objętość = długość × szerokość × (czujnik → dno − odczyt); użytkowe ml = objętość − ukryte
   dno (10% pojemności do znacznika, w pełnych porcjach); zakres rezerwy = 30% użytkowej.
 - Tekst: „≈ N / M portions”, ml, %, wysokość wody / znacznik, wiek pomiaru, „settling after
-  pump”, stan pływaka (gdy nie „ok”). Brak ważnego odczytu → „no reading”.
+  pump”. Brak ważnego odczytu → „no reading”.
 - Aktualizacja jak dotąd: serie co 10 s, cisza 2 min po pompie. Bez alarmów i buzzera —
   w zakresie rezerwy żółty znaczek w statusie.
 
-## 8. Pływak rezerwy — stop pompy (wdrożone v5, tymczasowo wyłączone)
+## 8. Pływak rezerwy — usunięty (2026-10-25)
 
-- GPIO 8, debounce 3 s. LOW → brak wody: `BUZZER_ALARM`, czerwony znaczek, nowa porcja (auto
-  i ręczna) nie startuje; rozpoczęta się kończy.
-- Zatrzask: po podniesieniu pływaka alarm trwa do Cycle Reset (GUI) albo przycisku sprzętowego;
-  reset przy wciąż opuszczonym pływaku nie kasuje alarmu.
-- `/api/status`: `reserve_empty`, `reserve_float` (ok / low / latched / disabled).
+Wdrożony w v5, nigdy nie zamontowany (`RESERVE_FLOAT_ENABLED = 0`), usunięty z kodu. Zostały
+punkty zaczepienia dla stopu na ToF: `isReserveEmpty()` (na razie false), `clearReserveLatch()`
+(pusta) i pole `reserve_empty` w `/api/status`; pole `reserve_float` usunięte. Następca:
+poziom alarmowy na ToF — `AUDYT_I_PLAN_REZERWY_TOF_1.0.md` §3.
 
 ## 9. Buzzer
 
-Jeden wzorzec `BUZZER_ALARM` — 2 piknięcia 50 ms co 120 s: pływak (brak wody) i każdy błąd
-ATO. Zakres rezerwy z czujnika — bez buzzera.
+Jeden wzorzec `BUZZER_ALARM` — 2 piknięcia 50 ms co 120 s: każdy błąd ATO (dawniej też
+pływak). Zakres rezerwy z czujnika — bez buzzera.
 
 ## 10. FRAM
 
@@ -136,14 +132,13 @@ ATO. Zakres rezerwy z czujnika — bez buzzera.
 
 - `GET|POST /api/reserve-config` — wymiary i znacznik; wyliczane ml/mm, pojemność, progi.
 - `POST /api/pump/calibration` — `start&dose_ml`, `run`, `stop`, `confirm`, `cancel`.
-- `GET /api/status` — `res_*` (szacunek z czujnika), `reserve_low`, `reserve_empty`,
-  `reserve_float`, `cal_*`.
+- `GET /api/status` — `res_*` (szacunek z czujnika), `reserve_low`, `reserve_empty`
+  (na razie zawsze false), `cal_*`.
 - Usunięte: `POST /api/reserve/refill`.
 
 ## 12. Później (świadomie odłożone)
 
-- Włączenie pływaka (patrz przypomnienia na górze).
-- Wyświetlacz OLED (`docs/DISPLAY_OLED_091.md`) — dane z GUI (rezerwa, stan pływaka).
+- Wyświetlacz OLED (`docs/DISPLAY_OLED_091.md`) — dane z GUI (rezerwa).
 - Ewentualnie lepszy cel dla czujnika (nieprzezroczysty matowy pływak w kominie) — jeśli
   kiedyś czujnik miałby wrócić do kontroli dawek.
 - Log zdarzeń w FRAM + eksport CSV.

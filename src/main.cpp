@@ -129,7 +129,7 @@ void setup() {
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
     initReservoirConfig();
-    initReserveController();   // reservoir float switch
+    initReserveController();
     // I2C bus reset after burst ring-buffer reads — ensures clean state for credentials and RTC.
     Wire.end();
     delay(10);
@@ -276,7 +276,6 @@ void loop() {
     // Sensor + algorithm — every loop iteration
     updateWaterSensor();
     updateLevelSensor();
-    updateReserveController();
     updatePumpCalibration();
     updateLevelTest();
     waterAlgorithm.update();

@@ -6,13 +6,8 @@
 // Source-water reserve as measured by the VL53L4CD level sensor — information
 // only (GUI). Volume = reservoir floor area × water height; the user sees the
 // usable part above the hidden safety bottom, in ml and estimated portions.
-// The sensor error (~±2 cm) is fine for the yellow reserve range, but not for
-// stopping the pump — isReserveEmpty() is the reservoir float switch
-// (RESERVOIR_FLOAT_PIN, LOW = no water, latched until a reset with water back).
-
-// TEMPORARY: float switch not installed yet — set to 1 once it is wired
-#define RESERVE_FLOAT_ENABLED        0
-#define RESERVE_FLOAT_DEBOUNCE_MS 3000UL
+// No pump stop on an empty reservoir yet: isReserveEmpty() is always false
+// until the stop on a ToF alarm level is in place.
 
 enum ReserveZone : uint8_t {
     RESERVE_ZONE_OK      = 0,
@@ -34,21 +29,16 @@ struct ReserveView {
     ReserveZone zone;
 };
 
-// Init — configures the float switch input
+// Init — logs that there is no empty-reservoir stop
 void initReserveController();
-
-// Call every loop() iteration — float switch debounce
-void updateReserveController();
 
 // doseMl — portion size for the portion estimate and the rounded thresholds
 ReserveView getReserveView(uint16_t doseMl);
 
 bool isReserveLow();     // sensor: in the reserve range (not empty)
-bool isReserveEmpty();   // float switch: no water (or latched) → alarm, no new portion
+bool isReserveEmpty();   // empty → alarm, no new portion (always false for now)
 
-// Reset (GUI / button): clears the latch when the float reports water again
+// Reset (GUI / button): clears the empty-reservoir latch (nothing to clear for now)
 void clearReserveLatch();
-
-const char* getReserveFloatString();   // "ok", "low", "latched", "disabled"
 
 #endif // RESERVE_CONTROLLER_H

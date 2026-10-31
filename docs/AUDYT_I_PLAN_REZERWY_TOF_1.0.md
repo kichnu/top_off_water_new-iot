@@ -182,3 +182,72 @@ Po zakończeniu wkleić w sesji panelu (lub dopisać do `docs/nodes/dolewka.md`)
 - zmiany alarmów: `LOW_RESERVOIR` (teraz ToF + przyczyna), `LEVEL_SENSOR_FAULT` (priorytet),
   `NO_TOPOFF`, persystencja zatrzasków, `alarm_mute`;
 - wnioski z diagnostyki padającego czujnika (czy W4 się potwierdziło).
+
+## 8. Notatki z testów na sprzęcie (2026-10-31)
+
+Firmware z `hw_health`, hasłem OTA i filtrem sd serii wgrany (USB, potem OTA działa).
+
+### Awaria czujnika poziomu niewidoczna w GUI — do decyzji
+
+Test: czujnik skierowany w pustą przestrzeń (> 2 m, `st4`, `i2c=0`), zbiornik pełny. FAULT po 3 złych
+seriach (~39 s), re-init soft / XSHUT co ~40 s — log OK. W GUI **nic**:
+
+- rezerwa zostaje w trybie pomiaru do `RESERVE_STALE_MS` (5 min bez ważnej serii), dopiero potem pasek
+  w obrysie „estimate”; alarmu nie ma, bo szacunek od pełnego zbiornika ma duży zapas;
+- żółty status dopiero po 30 min bez odczytu (`reserve_no_reading`);
+- w trybie pomiaru GUI nie patrzy na `level_sensor` — notatka „level sensor fault” tylko, gdy nie ma
+  ani pomiaru, ani szacunku.
+
+Czyli FAULT jest niewidoczny przez 5 min, a status bez koloru przez 30 min — niezgodne z regułą
+„awaria widoczna od razu”. Czujnik poziomu nie jest jeszcze sklasyfikowany w
+`~/dev-knowledge/esp32/critical-hardware-alarm.md` (ani blok krytyczny, ani świadomy wyjątek).
+
+Propozycja (niewdrożona, decyzja użytkownika: na razie bez zmian):
+- od chwili FAULT: status żółty, w linii statusu dopisek „Level sensor not reading (N min) — check the
+  sensor”, pod paskiem „level sensor fault, last reading N min ago”;
+- bez buzzera i bez blokady ATO — bezpieczeństwo daje szacunek po 5 min (porcja liczona podwójnie),
+  buzzer i tak przy szacunku na poziomie alarmowym; wpisać jako świadomy wyjątek do
+  `critical-hardware-alarm.md` i dokumentacji projektu;
+- alternatywa: FAULT = alarm krytyczny (zatrzask + buzzer jak FRAM/RTC) — raczej przesada.
+
+Przy okazji: rozróżnić w logu / GUI „brak odbicia” (`i2c=0`, same `st4`/`st2`) od awarii magistrali —
+re-init przy braku celu nic nie daje. Log FAULT: „last pump stop -1 s ago” = brak pracy pompy od startu
+→ wypisywać „none”.
+
+### Filtr rozrzutu serii (`da185cb`)
+
+Seria ważna przy sd ≤ 10 mm. W teście z ruchomym czujnikiem odrzuca mieszane serie (sd 21.7, 79.2 mm).
+W trakcie dolewania wody pojedyncze serie z sd 10.2–10.6 mm odpadają (falująca powierzchnia) — bez
+skutku (FAULT dopiero po 3 z rzędu). Do sprawdzenia: sd przy spokojnej wodzie blisko dna (poziom
+alarmowy ≈ 412 mm od czujnika, najsłabszy sygnał). Jeśli stale 8–10 mm → próg 15 mm.
+
+### Nieprzetestowane jeszcze na sprzęcie
+
+- tryb szacunku z prawdziwą awarią > 5 min w połowie zbiornika (§5: dawki liczone podwójnie, stop przy
+  szacunku na poziomie alarmowym);
+- odejmowanie wody wypompowanej (`drawn_ml`) — w testach pompa nie ruszała;
+- testy kroków 4–7 (przycisk 3 s, błąd po restarcie, Service Mode 180 min, limit < 2 × dawka);
+- alarm `hw_health` (odłączenie RTC / FRAM).
+
+## 9. Otwarte tematy (stan 2026-10-31, bez wdrażania na razie)
+
+Decyzja użytkownika 2026-10-31: dalszych zmian na razie nie wdrażamy — lista do wykorzystania przy okazji.
+
+1. Krok 8 — mutex I2C / cache w handlerach (W4). Najpierw test: doba z zamkniętym dashboardem vs doba
+   z otwartym, porównać liczbę FAULT w `/api/level-events`.
+2. Krok 9 — biała lista IP dla logu TCP, port 23 (S2). S1 (hasło OTA) zrobione w `17abeba`.
+3. Krok 10 — pod panel `home_display-iot`:
+   - S4: `/api/system-toggle` i inne komendy idempotentne — stan docelowy (`enabled=0|1`) zamiast
+     przełączania; `cmd_id` dla porcji ręcznej, jeśli zostanie w panelu;
+   - S5: `alarm_mute` (wycisza aktywny alarm, nowe wystąpienie znów dzwoni).
+4. Drobne: N1 (`ERROR_BOTH` ustawiać albo usunąć), N2 + pytanie 6.4 (pompa niekalibrowana: blokada
+   auto czy tylko status — bez odpowiedzi), N3 (`manualResetTs` tylko w RAM — udokumentować).
+5. Testy na sprzęcie — §8 „Nieprzetestowane jeszcze”.
+6. Awaria czujnika poziomu niewidoczna w GUI — §8, do decyzji.
+7. Interwał serii poziomu: `LEVEL_SERIES_INTERVAL_MS` 10 s (bring-up) → docelowo ~60 s (uwaga: min z
+   3 serii = ~3 min opóźnienia zdjęcia alarmu po dolaniu — pokazać w GUI).
+8. `daily_limit_ml` na urządzeniu: przy 2–4 l/dobę domyślne 2000 ml za mało (np. ~5000).
+9. Dashboard VPS: pokazywać pole `alarm` / `alarm_text` z `/api/health`.
+10. Raport zwrotny do `home_display-iot` (§7); `docs/nodes/dolewka.md` w panelu jest z `b13197d` —
+    nieaktualny (pływak zbiornika, brak stopu na ToF, brak `NO_TOPOFF`, zatrzasków w FRAM).
+11. Po wdrożeniu panelu `home_display-iot`: usunąć dolewkę ręczną z GUI WWW (odp. 6.1).

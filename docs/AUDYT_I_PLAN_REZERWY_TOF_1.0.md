@@ -172,6 +172,9 @@ końcu, Service Mode po starcie nie (restart nocny nie zeruje); punkt odniesieni
 
 ## 7. Raport zwrotny do `home_display-iot`
 
+Przekazany 2026-10-31 (firmware `df4a2dc`): `home_display-iot/docs/nodes/dolewka_raport_2026-10-31.md`.
+Uzupełnić później: wnioski z W4, wyniki testów z §8.
+
 Po zakończeniu wkleić w sesji panelu (lub dopisać do `docs/nodes/dolewka.md`):
 
 - commit(y) i wersja firmware;
@@ -250,6 +253,6 @@ Decyzja użytkownika 2026-10-31: dalszych zmian na razie nie wdrażamy — lista
    3 serii = ~3 min opóźnienia zdjęcia alarmu po dolaniu — pokazać w GUI).
 8. `daily_limit_ml` na urządzeniu: przy 2–4 l/dobę domyślne 2000 ml za mało (np. ~5000).
 9. Dashboard VPS: pokazywać pole `alarm` / `alarm_text` z `/api/health`.
-10. Raport zwrotny do `home_display-iot` (§7); `docs/nodes/dolewka.md` w panelu jest z `b13197d` —
-    nieaktualny (pływak zbiornika, brak stopu na ToF, brak `NO_TOPOFF`, zatrzasków w FRAM).
+10. Raport zwrotny do `home_display-iot` (§7) — przekazany 2026-10-31; w panelu zostaje aktualizacja
+    `docs/nodes/dolewka.md` według raportu.
 11. Po wdrożeniu panelu `home_display-iot`: usunąć dolewkę ręczną z GUI WWW (odp. 6.1).

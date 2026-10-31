@@ -28,7 +28,7 @@
 #include "provisioning/ap_core.h"
 #include "provisioning/ap_server.h"
 
-static uint32_t g_restartAtTs = 0;  // docelowy timestamp restartu (lokalna północ); 0 = wyłączony
+static uint32_t g_restartAtTs = 0;  // restart target time (local midnight); 0 = disabled
 
 // A planned restart waits while the pump runs, an ATO cycle, a manual session or
 // a calibration is in progress (a cut cycle would miss the 24 h counter and the
@@ -132,10 +132,10 @@ void setup() {
 
     delay(2000);
 
-    // RTC przed initFromFRAM — scanRolling24h() wymaga poprawnego getUnixTimestamp()
+    // RTC before initFromFRAM — scanRolling24h() needs a valid getUnixTimestamp()
     initializeRTC();
 
-    initNVS();          // initNVS() wywołuje initFRAM() wewnętrznie (config.cpp)
+    initNVS();          // initNVS() calls initFRAM() internally (config.cpp)
     loadVolumeFromNVS();
     waterAlgorithm.initFromFRAM();
     initReservoirConfig();
@@ -207,9 +207,9 @@ void setup() {
 
         ArduinoOTA.setPassword(OTA_PASSWORD);
         ArduinoOTA.onStart([]() {
-            // KRYTYCZNE: wyłączyć pompę PRZED erase flash — erase blokuje CPU
-            // dłużej niż jeden tick, więc pompa zostawiona ON zostałaby ON
-            // przez cały czas trwania OTA.
+            // CRITICAL: stop the pump BEFORE the flash erase — the erase blocks the
+            // CPU for longer than one tick, so a pump left ON would stay ON for
+            // the whole OTA.
             LOG_INFO("OTA update starting — stopping pump and disabling system");
             if (isPumpActive()) stopPump();
             setSystemState(false);
@@ -218,8 +218,8 @@ void setup() {
             LOG_INFO("OTA update complete — restarting");
         });
         ArduinoOTA.onError([](ota_error_t error) {
-            // OTA mogło zawieść z przyczyn niezwiązanych z crashem (zły hash,
-            // sieć) — urządzenie wtedy nie restartuje się samo.
+            // OTA may fail for reasons other than a crash (bad hash, network) —
+            // the device does not restart by itself then.
             LOG_ERROR("OTA error [%u] — re-enabling system", error);
             setSystemState(true);
         });
@@ -243,19 +243,19 @@ void setup() {
         buzzerCritical();
     }
 
-    // Wyznaczyć docelowy czas restartu = najbliższa lokalna północ
-    // Guard: RTC musi działać i mieć sensowny czas (rok > 2020)
+    // Restart target time = the next local midnight
+    // Guard: the RTC must work and have a sane time (year > 2020)
     uint32_t nowTs = (uint32_t)getUnixTimestamp();
     struct tm t;
     time_t ts = (time_t)nowTs;
     localtime_r(&ts, &t);
-    if (isRTCWorking() && t.tm_year > 120) {  // tm_year: lata od 1900; 120 = rok 2020
+    if (isRTCWorking() && t.tm_year > 120) {  // tm_year: years since 1900; 120 = 2020
         uint32_t secOfDay = t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec;
-        uint32_t midnight = nowTs - secOfDay + 86400UL;  // następna lokalna północ (UTC)
+        uint32_t midnight = nowTs - secOfDay + 86400UL;  // next local midnight (UTC)
         g_restartAtTs = midnight;
         LOG_INFO("Daily restart scheduled at next midnight (ts=%lu, in %lus)", midnight, midnight - nowTs);
     } else {
-        g_restartAtTs = 0;  // fallback: restart wyłączony (brak RTC)
+        g_restartAtTs = 0;  // fallback: restart disabled (no RTC)
         LOG_WARNING("RTC not ready — daily midnight restart disabled");
     }
 }
@@ -297,7 +297,7 @@ void loop() {
         ESP.restart();
     }
 
-    // OTA — musi być wołane co iterację loop(), nie w wolniejszym ticku
+    // OTA — must be called every loop() iteration, not in the slower tick
     ArduinoOTA.handle();
     handleNetworkLog();
 

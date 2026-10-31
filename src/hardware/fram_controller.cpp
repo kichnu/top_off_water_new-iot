@@ -11,8 +11,8 @@
 
 #include "../crypto/fram_encryption.h"
 
-// PumpCycle legacy check — FRAM_CYCLE_SIZE=28, PumpCycle=28 bajtów
-// static_assert wyłączony — PumpCycle zachowany tylko jako legacy typ dla starych rekordów FRAM
+// PumpCycle legacy check — FRAM_CYCLE_SIZE=28, PumpCycle=28 bytes
+// static_assert disabled — PumpCycle kept only as a legacy type for old FRAM records
 
 
 Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
@@ -854,7 +854,7 @@ bool loadFillWaterMaxFromFRAM(uint16_t& fillWaterMax) {
     if (fillWaterMax < 100 || fillWaterMax > 10000) {
         LOG_WARNING("");
         LOG_WARNING("FRAM fill water max out of range: %d, using default", fillWaterMax);
-        fillWaterMax = 2000;  // Fallback default (zastąpione przez DEFAULT_MAX_DOSE_ML w nowym kodzie)
+        fillWaterMax = 2000;  // Fallback default (replaced by DEFAULT_MAX_DOSE_ML in the new code)
         return false;
     }
     
@@ -864,7 +864,7 @@ bool loadFillWaterMaxFromFRAM(uint16_t& fillWaterMax) {
 }
 
 // ================================================================
-// 🆕 TOP-OFF RECORD — ring buffer (60 × 20 bajtów)
+// 🆕 TOP-OFF RECORD — ring buffer (60 × 20 bytes)
 // ================================================================
 
 static_assert(sizeof(TopOffRecord) == FRAM_TOPOFF_RECORD_SIZE,
@@ -873,7 +873,7 @@ static_assert(sizeof(TopOffRecord) == FRAM_TOPOFF_RECORD_SIZE,
 bool saveTopOffRecord(const TopOffRecord& record) {
     if (!framInitialized) return false;
 
-    // Odczytaj aktualny write pointer i count
+    // Read the current write pointer and count
     uint16_t wptr  = 0;
     uint16_t count = 0;
     framRd(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
@@ -907,8 +907,8 @@ uint16_t loadTopOffHistory(TopOffRecord* buf, uint16_t maxCount) {
     if (count > maxCount)            count = maxCount;
     if (count == 0) return 0;
 
-    // Odczytaj od najstarszego do najnowszego
-    // Najstarszy jest pod wptr (jeśli bufor pełny) lub pod 0 (jeśli niepełny)
+    // Read from the oldest to the newest
+    // The oldest is at wptr (buffer full) or at 0 (not full)
     uint16_t startSlot = (wptr >= count) ? (wptr - count) : (TOPOFF_HISTORY_SIZE - (count - wptr));
 
     for (uint16_t i = 0; i < count; i++) {

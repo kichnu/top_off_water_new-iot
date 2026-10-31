@@ -124,8 +124,8 @@ bool syncTimeFromNTP() {
     
     while (attempts < 40) {  // 40 * 500ms = 20 seconds
         time(&now);
-        if (now > 1600000000) {  // Sprawdź czy timestamp jest sensowny (after 2020)
-            localtime_r(&now, &timeinfo);  // ✅ Automatyczna konwersja na lokalny czas
+        if (now > 1600000000) {  // Sane timestamp (after 2020)
+            localtime_r(&now, &timeinfo);  // ✅ Automatic conversion to local time
             
             char timeStr[64];
             strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S %Z", &timeinfo);
@@ -154,16 +154,16 @@ bool setRTCFromNTP() {
         return false;
     }
     
-    // ✅ Pobierz UTC timestamp z systemu (NTP już zsynchronizowany)
+    // ✅ Get the UTC timestamp from the system (NTP already synced)
     time_t ntp_time;
     time(&ntp_time);
     
     LOG_INFO("NTP returned UTC timestamp: %lu", (unsigned long)ntp_time);
     
-    // ✅ Zapisz UTC BEZPOŚREDNIO do RTC (bez żadnych offsetów)
+    // ✅ Write UTC DIRECTLY to the RTC (no offsets)
     rtc.adjust(DateTime(ntp_time));
     
-    // Weryfikacja z konwersją na lokalny czas dla loga
+    // Verify, converted to local time for the log
     DateTime rtc_utc = rtc.now();
     time_t rtc_timestamp = rtc_utc.unixtime();
     struct tm local_time;
@@ -187,7 +187,7 @@ bool setRTCFromNTP() {
 void initializeRTC() {
     LOG_INFO("Starting RTC initialization...");
     
-    // ✅ KLUCZOWE: Ustaw strefę czasową NA POCZĄTKU, niezależnie od NTP
+    // ✅ KEY: set the timezone FIRST, independently of NTP
     configureTimezone();
     
     // Reset flags
@@ -215,7 +215,7 @@ void initializeRTC() {
         LOG_INFO("DS3231 detected on I2C bus");
         
         if (rtc.begin()) {
-            // Sprawdź czy RTC stracił zasilanie (bateria wyczerpana)
+            // Did the RTC lose power (battery dead)?
             if (rtc.lostPower()) {
                 LOG_WARNING("⚠️ RTC lost power - battery dead or removed");
                 LOG_INFO("Setting RTC to compile time to clear OSF flag...");
@@ -223,7 +223,7 @@ void initializeRTC() {
                 batteryIssueDetected = true;
                 rtcNeedsSync = true;
                 
-                // Ustaw na compile time aby wyczyścić flagę OSF
+                // Set to the compile time to clear the OSF flag
                 DateTime compileTime = DateTime(F(__DATE__), F(__TIME__));
                 rtc.adjust(compileTime);
                 delay(100);
@@ -239,7 +239,7 @@ void initializeRTC() {
                 LOG_INFO("OSF flag cleared");
                 LOG_WARNING("⚠️ Battery issue detected - replace CR2032 battery");
                 
-                // Próba synchronizacji z NTP
+                // Try an NTP sync
                 LOG_INFO("Attempting immediate NTP sync after battery loss...");
                 
                 if (setRTCFromNTP()) {
@@ -256,7 +256,7 @@ void initializeRTC() {
                 }
             }
             
-            // Weryfikacja czasu RTC
+            // Verify the RTC time
             DateTime now = rtc.now();
             DateTime compileTime = DateTime(F(__DATE__), F(__TIME__));
             
@@ -264,7 +264,7 @@ void initializeRTC() {
                      now.year(), now.month(), now.day(),
                      now.hour(), now.minute(), now.second());
             
-            // Walidacja komponentów czasu
+            // Validate the time components
             bool timeValid = true;
             if (now.year() < 2020 || now.year() > 2035) {
                 LOG_ERROR("RTC year invalid: %d", now.year());
@@ -320,7 +320,7 @@ void initializeRTC() {
         LOG_WARNING("DS3231 not found on I2C bus (error: %d)", error);
     }
     
-    // Fallback do wewnętrznego RTC ESP32
+    // Fall back to the ESP32 internal time
     LOG_INFO("Falling back to ESP32 system time");
     useInternalRTC = true;
     rtcInitialized = true;
@@ -444,7 +444,7 @@ unsigned long getUnixTimestamp() {
         
         return mktime(&tm_time);
     } else {
-        // ✅ RETRY MECHANISM - jak w getCurrentTimestamp()
+        // ✅ RETRY MECHANISM - as in getCurrentTimestamp()
         const int MAX_RETRIES = 3;
         DateTime now;
         bool validRead = false;
@@ -452,7 +452,7 @@ unsigned long getUnixTimestamp() {
         for (int retry = 0; retry < MAX_RETRIES; retry++) {
             now = rtc.now();
             
-            // ✅ Walidacja roku
+            // ✅ Validate the year
             if (now.year() >= 2024 && now.year() <= 2035) {
                 validRead = true;
                 break;
@@ -470,7 +470,7 @@ unsigned long getUnixTimestamp() {
                 LOG_ERROR("RTC read failed in getUnixTimestamp(), year: %d", now.year());
                 lastError = millis();
             }
-            // ✅ Fallback: zwróć sensowną wartość zamiast śmieci
+            // ✅ Fallback: return a sane value instead of garbage
             return 1735689600;  // 2025-01-01 00:00:00 UTC
         }
         
@@ -485,7 +485,7 @@ bool isRTCWorking() {
     }
     
     if (useInternalRTC) {
-        return true;  // Internal RTC zawsze "działa"
+        return true;  // Internal RTC always "works"
     } else {
         DateTime now = rtc.now();
         return (now.year() >= 2020 && now.year() <= 2035);

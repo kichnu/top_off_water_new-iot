@@ -40,7 +40,7 @@ Boot feedback: `buzzerPowerOn()` (1s tone at start of `setup()`), `buzzerOK()` (
 
 **Auto Mode** — ATO algorithm active; switching to it stops a manual dosing session at once.
 
-Toggle via `POST /api/system-toggle` or the web dashboard.
+Switch via the web dashboard or `POST /api/system-toggle` with `enabled=1` (Auto) / `enabled=0` (Service) — idempotent: the mode already set changes nothing (a running Service Mode timer is kept), so a retried command is safe. Without `enabled` the mode toggles (legacy).
 
 ## ATO Algorithm
 
@@ -182,7 +182,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET/POST | `/api/system-toggle` | Toggle Auto Mode / Service Mode (Service Mode from here returns to Auto after 180 min) |
+| GET/POST | `/api/system-toggle` | GET: `enabled`. POST `enabled=0\|1`: set Service / Auto Mode (idempotent; response `enabled`, `changed`); without `enabled`: toggle. Service Mode from here returns to Auto after 180 min; a change is refused (409) during the pump calibration |
 | POST | `/api/system-reset` | Reset ATO state machine to IDLE, clear ERROR |
 
 ### Pump Control

@@ -404,24 +404,39 @@ void handleSystemToggle(AsyncWebServerRequest* request) {
         request->send(200, "application/json", response);
 
     } else if (request->method() == HTTP_POST) {
-        if (isPumpCalibrationActive()) {
+        // enabled=0|1 sets the target mode (idempotent — a retried command changes nothing);
+        // without it the mode toggles (legacy)
+        bool enabledNow = !isSystemDisabled();
+        bool target     = !enabledNow;
+        if (request->hasParam("enabled", true)) {
+            String v = request->getParam("enabled", true)->value();
+            if (v != "0" && v != "1") {
+                request->send(400, "application/json",
+                    "{\"success\":false,\"error\":\"enabled must be 0 or 1\"}");
+                return;
+            }
+            target = (v == "1");
+        }
+        bool changed = (target != enabledNow);
+        if (changed && isPumpCalibrationActive()) {
             request->send(409, "application/json",
                 "{\"success\":false,\"error\":\"Pump calibration in progress — Service Mode required\"}");
             return;
         }
-        bool currentlyDisabled = isSystemDisabled();
-        // Service Mode from the user (aquarium service) returns to Auto after 180 min
-        setSystemState(currentlyDisabled, SERVICE_MODE_MANUAL_MS);  // toggle
+        // Service Mode from the user (aquarium service) returns to Auto after 180 min;
+        // the same mode again keeps the running timer
+        if (changed) setSystemState(target, SERVICE_MODE_MANUAL_MS);
 
         JsonDocument json;
         json["success"] = true;
-        json["enabled"] = currentlyDisabled;  // was disabled → now enabled, and vice versa
+        json["enabled"] = target;
+        json["changed"] = changed;
 
         String response;
         serializeJson(json, response);
         request->send(200, "application/json", response);
 
-        LOG_INFO("System %s via web interface", currentlyDisabled ? "ENABLED" : "DISABLED");
+        if (changed) LOG_INFO("System %s via web interface", target ? "ENABLED" : "DISABLED");
     }
 }
 

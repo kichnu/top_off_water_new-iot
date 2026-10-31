@@ -237,8 +237,10 @@ Decyzja użytkownika 2026-10-31: dalszych zmian na razie nie wdrażamy — lista
    z otwartym, porównać liczbę FAULT w `/api/level-events`.
 2. Krok 9 — biała lista IP dla logu TCP, port 23 (S2). S1 (hasło OTA) zrobione w `17abeba`.
 3. Krok 10 — pod panel `home_display-iot`:
-   - S4: `/api/system-toggle` i inne komendy idempotentne — stan docelowy (`enabled=0|1`) zamiast
-     przełączania; `cmd_id` dla porcji ręcznej, jeśli zostanie w panelu;
+   - S4: zrobione 2026-10-31 dla `/api/system-toggle` — `enabled=0|1` ustawia stan docelowy, ten sam
+     stan nic nie zmienia (timer Service Mode zostaje), odpowiedź `enabled` + `changed`; bez parametru
+     przełączanie jak dawniej. `system-reset`, `pump/stop`, `direct-off` są idempotentne z natury.
+     Zostaje `cmd_id` dla `direct-on` — tylko jeśli porcja ręczna trafi do panelu;
    - S5: `alarm_mute` (wycisza aktywny alarm, nowe wystąpienie znów dzwoni).
 4. Drobne: N1 (`ERROR_BOTH` ustawiać albo usunąć), N2 + pytanie 6.4 (pompa niekalibrowana: blokada
    auto czy tylko status — bez odpowiedzi), N3 (`manualResetTs` tylko w RAM — udokumentować).

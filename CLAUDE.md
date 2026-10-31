@@ -151,7 +151,7 @@ Authentication:
 
 System:
 - `GET  /api/status` — full system status JSON
-- `GET|POST /api/system-toggle` — enable/disable system (Service Mode from here returns to Auto after 180 min)
+- `GET|POST /api/system-toggle` — POST `enabled=0|1` sets Service / Auto Mode (idempotent), without it toggles (Service Mode from here returns to Auto after 180 min)
 - `POST /api/system-reset` — reset ATO state machine
 
 ATO pump:

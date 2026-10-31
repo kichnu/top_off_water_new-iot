@@ -1330,7 +1330,12 @@ const char* DASHBOARD_HTML = R"rawliteral(
             const btn = document.getElementById("systemToggleBtn");
             btn.disabled = true;
 
-            secureFetch("api/system-toggle", { method: "POST" })
+            // Target mode, not a toggle — a retried request cannot flip it back
+            secureFetch("api/system-toggle", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "enabled=" + (systemEnabled ? "0" : "1")
+            })
                 .then((response) => {
                     if (!response) { btn.disabled = false; return; }
                     return response.json();

@@ -278,7 +278,7 @@ static void finishSeries() {
     s.samples     = g_n;
     s.rejected    = g_rej;
     s.finished_ms = g_lastSeriesEnd;
-    s.valid       = (g_n >= (LEVEL_SAMPLES_PER_SERIES + 1) / 2);
+    bool enough   = (g_n >= (LEVEL_SAMPLES_PER_SERIES + 1) / 2);
 
     if (g_n > 0) {
         double mean = g_sum / g_n;
@@ -290,6 +290,9 @@ static void finishSeries() {
         s.signal_kcps  = (uint16_t)(g_sumSignal / g_n);
         s.ambient_kcps = (uint16_t)(g_sumAmbient / g_n);
     }
+    // Large spread = average of different targets, not the water surface
+    bool scattered = enough && s.stddev_mm > LEVEL_MAX_STDDEV_MM;
+    s.valid        = enough && !scattered;
     g_last = s;
     g_seriesCount++;
 
@@ -324,6 +327,10 @@ static void finishSeries() {
             logEvent(EV_WARN, tripsFault,
                      "Level: no data, %u in a row (polls=%u fail=%u e%u hv=%02X; %s)",
                      g_badSeries, g_polls, g_pollFail, g_pollErr, g_lastHv, snap);
+        } else if (scattered) {
+            logEvent(EV_WARN, tripsFault,
+                     "Level: bad series (scattered: %.1f mm sd %.2f > %.0f, n=%u rej=%u), %u in a row",
+                     s.distance_mm, s.stddev_mm, LEVEL_MAX_STDDEV_MM, s.samples, s.rejected, g_badSeries);
         } else {
             logEvent(EV_WARN, tripsFault,
                      "Level: bad series (n=%u rej=%u [i2c=%u%s], %u in a row; last rej %u mm sig=%u amb=%u sigma=%u spads=%u)",

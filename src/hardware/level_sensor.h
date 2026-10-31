@@ -12,6 +12,7 @@
 #define LEVEL_SAMPLES_PER_SERIES      10     // N valid samples per series
 #define LEVEL_SERIES_INTERVAL_MS   10000UL   // bring-up value; target ~60 s
 #define LEVEL_SERIES_TIMEOUT_MS     3000UL   // series closed with what it has after this
+#define LEVEL_MAX_STDDEV_MM          10.0f   // larger spread = mixed targets (e.g. sensor moved) → bad series
 #define LEVEL_INIT_RETRY_MS        30000UL   // retry init when the sensor is not detected
 #define LEVEL_FAULT_SERIES             3     // consecutive bad series → FAULT
 #define LEVEL_BUS_RECOVERY_MS     300000UL   // min gap between full I2C bus recoveries in FAULT
@@ -31,7 +32,7 @@ enum LevelSensorState : uint8_t {
 };
 
 struct LevelSeries {
-    bool     valid;          // at least N/2 valid samples
+    bool     valid;          // at least N/2 valid samples and stddev <= LEVEL_MAX_STDDEV_MM
     float    distance_mm;    // mean of valid samples
     float    stddev_mm;      // sample standard deviation
     float    sem_mm;         // standard error of the mean (stddev / sqrt(n))

@@ -114,6 +114,9 @@ bez automatycznego powrotu do Auto.
   alarmowym (tyle da się jeszcze dolać); kalibracja wymaga ≥ 4 + 1 takich porcji.
 - Tekst: „≈ N / M portions”, ml, %, wysokość wody / znacznik, wiek pomiaru, „settling after
   pump”. Brak ważnego odczytu → „no reading”.
+- Seria ważna: ≥ N/2 ważnych próbek i odchylenie std ≤ 10 mm (`LEVEL_MAX_STDDEV_MM`, 2026-10-31).
+  Większy rozrzut = średnia z różnych celów (test z obracaniem czujnika: sd 21.7 i 79.2 mm przy
+  normalnych 0.5–5 mm) → zła seria, liczy się do FAULT.
 - Aktualizacja jak dotąd: serie co 10 s, cisza 2 min po pompie. Buzzer tylko przy błędach
   krytycznych (decyzja 2026-10-28): rezerwa — żółty status; poziom alarmowy — alarm krytyczny.
 

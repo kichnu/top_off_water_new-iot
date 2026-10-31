@@ -244,21 +244,25 @@ pio run -e seeed_xiao_esp32c3 -t clean && pio run -e seeed_xiao_esp32c3 -t uploa
 
 Requires firmware with OTA support already flashed once over USB (two-slot
 partition table — see `docs/OTA_FEASIBILITY_ESP32C3.md` and
-`docs/OTA_WIFI_UPLOAD_PATTERN.md`). `OTA_PASSWORD` must be exported in the
-**same shell command** as `pio run` — an `export` run separately beforehand
-does not survive into the build/upload process, and the firmware would get
-re-flashed with an empty/stale password.
+`docs/OTA_WIFI_UPLOAD_PATTERN.md`).
+
+OTA password: `scripts/ota_secret.py` (pre-script) reads the environment variable
+named in `custom_ota_password_var` (`OTA_PASSWORD_192_168_10_2`, named after the
+device IP) and puts it into a generated header (`ota_secret.h` in the build dir)
+and into the espota `--auth` flag. Keep it in `~/.secrets/iot.env` (chmod 600)
+sourced from the shell profile, never in the repo. Every upload — USB or OTA —
+without the variable is aborted, so the device never gets an empty password
+(OTA open to anyone on the network); a build without it only warns. The OTA env
+has a fixed `upload_port` and a fixed variable: an upload pointed at another
+device sends this device's password and is rejected there.
 
 ```bash
-# Build and upload over WiFi — replace <device-ip> with the device's LAN IP
-OTA_PASSWORD='your-password' pio run -e seeed_xiao_esp32c3_ota -t upload --upload-port=<device-ip>
+# Build and upload over WiFi (upload_port = 192.168.10.2)
+pio run -e seeed_xiao_esp32c3_ota -t upload
 ```
 
-Passwords with shell-special characters (`#`, `$`, space) — always single-quote:
-
-```bash
-OTA_PASSWORD='we6#example' pio run -e seeed_xiao_esp32c3_ota -t upload --upload-port=<device-ip>
-```
+Passwords with shell-special characters (`#`, `$`, space) — single-quote them
+in `iot.env`: `export OTA_PASSWORD_192_168_10_2='we6#example'`.
 
 Log monitor over WiFi (read-only TCP mirror of the serial log, port 23):
 
@@ -315,7 +319,8 @@ Credentials are AES-256 encrypted before writing to FRAM. To reconfigure, repeat
 | Repeated `BUZZER_ALARM` | An ATO error — resolve the cause and press Cycle Reset |
 | `STATE_ERROR` in dashboard | Daily limit or red alert — resolve cause, press Cycle Reset |
 | Pump timing wrong | Run Settings → Pump Calibration & Single Dose (4 portions into a vessel with a mark) |
-| OTA upload fails: `Authentication Failed` | `OTA_PASSWORD` build flag and `--auth` flag must match — re-export in the same shell command as `pio run` |
+| OTA upload fails: `Authentication Failed` | The device has a different password than `OTA_PASSWORD_192_168_10_2` (e.g. firmware built before the variable was set) — one reflash over USB |
+| `OTA_PASSWORD_192_168_10_2 not set — upload aborted` | The shell has no `~/.secrets/iot.env` — `source ~/.secrets/iot.env` |
 | OTA upload times out at 0% | Partition table only has one app slot — check `board_build.partitions` is `min_spiffs.csv`, not `huge_app.csv` |
 
 ## Source Structure

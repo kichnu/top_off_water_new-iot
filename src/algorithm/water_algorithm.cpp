@@ -8,6 +8,7 @@
 #include "../hardware/reserve_controller.h"
 #include "../hardware/pump_calibration.h"
 #include "../hardware/buzzer_controller.h"
+#include "../hardware/hw_health.h"
 #include "../config/config.h"
 #include "algorithm_config.h"
 #include <math.h>
@@ -663,7 +664,7 @@ void WaterAlgorithm::checkResetButton() {
     if (done || millis() - pressStart < RESET_HOLD_MS) return;
     done = true;
 
-    if (currentState != STATE_ERROR && !isReserveEmpty() && !noTopOffAlarm) {
+    if (currentState != STATE_ERROR && !isReserveEmpty() && !noTopOffAlarm && !isHwFaultAlarm()) {
         LOG_INFO("Reset button: nothing to reset");
         return;
     }
@@ -681,6 +682,7 @@ bool WaterAlgorithm::resetSystem() {
     if (isPumpActive()) stopPump();
 
     clearReserveLatch();   // reserve alarm cleared only with water back, else it stays
+    ackHwFaults();         // FRAM / RTC alarm cleared only when the block works again
     // Resetting an error with the score in the red zone: disarm the anomaly alarm
     // for a while, otherwise the next cycle raises it again at once
     if (currentState == STATE_ERROR && ema.alarm_score >= config.zone_yellow) {

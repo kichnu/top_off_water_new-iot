@@ -1739,11 +1739,13 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     // Badges
                     updateSensorBadge("sensor1Badge", data.sensor_active);
                     updatePumpBadge("pumpBadge", data.pump_active, data.pump_attempt || 0);
-                    updateSystemBadge("systemBadge", data.system_error || hasReserveEmpty || !!data.no_topoff_alarm,
+                    updateSystemBadge("systemBadge", data.system_error || hasReserveEmpty || !!data.no_topoff_alarm || !!data.hw_alarm,
                                       data.system_disabled, hasLowResWarning);
 
                     // Process status
                     document.getElementById("processDescription").textContent =
+                        (data.hw_alarm ? "HARDWARE FAULT: " + (data.hw_alarm_text || "?") +
+                            " \u2014 check the I2C wiring, then Cycle Reset \u00b7 " : "") +
                         (data.no_topoff_alarm ? "NO TOP-OFF FOR 24 h \u2014 check the sump float, then Cycle Reset \u00b7 " : "") +
                         (data.state_description || "IDLE - Waiting for sensors");
 
@@ -1766,7 +1768,10 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     const rtcHint = document.getElementById("rtcHint");
                     // Time only — rtc_time is "YYYY-MM-DD HH:MM:SS"
                     rtcTime.textContent = data.rtc_time ? data.rtc_time.split(" ").pop() : "Error";
-                    if (data.rtc_battery_issue || data.rtc_needs_sync) {
+                    if (data.rtc_ok === false) {
+                        rtcItem.className = "status-info rtc-warn";
+                        rtcHint.textContent = " \u26a0 RTC fault";
+                    } else if (data.rtc_battery_issue || data.rtc_needs_sync) {
                         rtcItem.className = "status-info rtc-warn";
                         rtcHint.textContent = " ⚠ Battery";
                     } else {

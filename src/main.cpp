@@ -22,12 +22,22 @@
 #include "hardware/level_sensor.h"
 #include "hardware/level_event_log.h"
 #include "hardware/level_test.h"
+#include "hardware/hw_health.h"
 #include "config/reservoir_config.h"
 #include "provisioning/prov_detector.h"
 #include "provisioning/ap_core.h"
 #include "provisioning/ap_server.h"
 
 static uint32_t g_restartAtTs = 0;  // docelowy timestamp restartu (lokalna północ); 0 = wyłączony
+
+// A planned restart waits while the pump runs, an ATO cycle, a manual session or
+// a calibration is in progress (a cut cycle would miss the 24 h counter and the
+// history) and in Service Mode (the user may be servicing the aquarium — a restart
+// would bring Auto back)
+static bool isRestartBlocked() {
+    return isPumpActive() || waterAlgorithm.isInCycle() || isDirectPumpMode() ||
+           isPumpCalibrationActive() || isSystemDisabled();
+}
 
 void setup() {
    
@@ -222,8 +232,11 @@ void setup() {
     LOG_INFO("=== System initialization complete ===");
     LOG_INFO("====================================");
 
-    // Sygnał dźwiękowy końca startu — CRITICAL jeśli cokolwiek krytycznego nie działa
-    bool bootOk = isFramInitialized() && credentials_loaded && isWiFiConnected() && isRTCWorking();
+    // Critical hardware check (FRAM, RTC) — latched alarm, see hw_health.h
+    initHwHealth();
+
+    // Boot-complete beep — CRITICAL if anything critical is not working
+    bool bootOk = !getHwFaultActive() && credentials_loaded && isWiFiConnected();
     if (bootOk) {
         buzzerOK();
     } else {
@@ -254,14 +267,10 @@ void loop() {
 
     // DAILY RESTART CHECK — at local midnight (00:00)
     // Guard: min uptime 30 min (no restart loop when booted just before midnight).
-    // Postponed while the pump runs, an ATO cycle, a manual session or a calibration
-    // is in progress — a cut cycle would miss the 24 h counter and the history
+    // Postponed while isRestartBlocked()
     if (g_restartAtTs > 0 && now > 1800000UL) {
         uint32_t nowTs = (uint32_t)getUnixTimestamp();
-        // Service Mode: the user may be servicing the aquarium — a restart would
-        // bring Auto back (no Service Mode after the midnight restart)
-        bool busy = isPumpActive() || waterAlgorithm.isInCycle() || isDirectPumpMode() ||
-                    isPumpCalibrationActive() || isSystemDisabled();
+        bool busy = isRestartBlocked();
         static bool deferLogged = false;
         if (nowTs >= g_restartAtTs && busy && !deferLogged) {
             deferLogged = true;
@@ -279,6 +288,15 @@ void loop() {
         }
     }
     
+    // FRAM missing at boot answers again — restart re-inits it (data from FRAM)
+    updateHwHealth();
+    if (isHwRecoveryRestartWanted() && !isRestartBlocked()) {
+        noteHwRecoveryRestart();
+        if (isPumpActive()) stopPump();
+        delay(1000);
+        ESP.restart();
+    }
+
     // OTA — musi być wołane co iterację loop(), nie w wolniejszym ticku
     ArduinoOTA.handle();
     handleNetworkLog();
@@ -296,10 +314,10 @@ void loop() {
         updatePumpController();
 
         // Buzzer — critical only: every ATO error (state stays until reset from the
-        // GUI), the reservoir alarm level and 24 h without a top-off; the reserve
-        // range is GUI-only
+        // GUI), the reservoir alarm level, 24 h without a top-off and a FRAM / RTC
+        // fault; the reserve range is GUI-only
         if (isReserveEmpty() || waterAlgorithm.getState() == STATE_ERROR ||
-            waterAlgorithm.isNoTopOffAlarm()) {
+            waterAlgorithm.isNoTopOffAlarm() || isHwFaultAlarm()) {
             setBuzzerMode(BUZZER_ALARM);
         } else {
             setBuzzerMode(BUZZER_OFF);

@@ -53,6 +53,7 @@ hardware/           Hardware abstraction layer
   buzzer_controller.*  Buzzer — FreeRTOS task (50ms tick), tryby: OFF/PROVISIONING/WARNING/ALARM
   fram_constants.h     Shared FRAM magic, version, field size constants
   fram_controller.*    FRAM memory management (all persistent data)
+  hw_health.*          FRAM / RTC check (boot + every 60 s), latched critical alarm (buzzer, GUI, API)
   hardware_pins.h      GPIO pin definitions
   level_sensor.*       VL53L4CD ToF reservoir level — non-blocking sample series
   level_event_log.*    Level sensor event log in FRAM (FAULT, resets, recovery) — diagnostics
@@ -117,7 +118,8 @@ Defined in `hardware/fram_controller.h`:
 - `0x05A2-0x05C3`: ReservoirConfig incl. PumpCalibration (32B + 2B checksum), magic=0xB3
 - `0x05C4-0x05D5`: ReserveTrack (16B + 2B checksum) — last level reading, water pumped since, alarm latch, magic=0xC5
 - `0x05D6-0x05E3`: AlgErrorState (12B + 2B checksum) — latched ATO error, anomaly alarm disarm time, no-top-off watchdog reference, magic=0xE8
-- `0x05E4-0x05FF`: free
+- `0x05E4-0x05FE`: free
+- `0x05FF`: hw_health scratch byte (FRAM write/read-back check)
 - `0x0610-0x0AC0`: TopOff ring buffer (60 × 20B = 1200B)
 - `0x1100-0x290F`: Level sensor event log (16B header + 48 × 128B), diagnostics
 

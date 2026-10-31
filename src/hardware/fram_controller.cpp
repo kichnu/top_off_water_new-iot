@@ -7,6 +7,7 @@
 #include "../config/reservoir_config.h"
 #include "reserve_controller.h"
 #include "rtc_controller.h"
+#include "hw_health.h"
 
 #include "../crypto/fram_encryption.h"
 
@@ -17,6 +18,20 @@
 Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 bool framInitialized = false;
 volatile bool framBusy = false;
+
+// Every FRAM transfer goes through these: a failed one triggers the critical
+// hardware check (hw_health) instead of being ignored
+static bool framRd(uint16_t addr, uint8_t* buf, uint16_t len) {
+    if (fram.read(addr, buf, len)) return true;
+    noteFramIoError();
+    return false;
+}
+
+static bool framWr(uint16_t addr, uint8_t* buf, uint16_t len) {
+    if (fram.write(addr, buf, len)) return true;
+    noteFramIoError();
+    return false;
+}
 
 // Calculate simple checksum
 uint16_t calculateChecksum(uint8_t* data, size_t len) {
@@ -42,12 +57,12 @@ bool framReconnect() {
 
 bool framReadRaw(uint16_t addr, uint8_t* buf, size_t len) {
     if (!framInitialized) return false;
-    return fram.read(addr, buf, len);
+    return framRd(addr, buf, len);
 }
 
 bool framWriteRaw(uint16_t addr, const uint8_t* buf, size_t len) {
     if (!framInitialized) return false;
-    return fram.write(addr, (uint8_t*)buf, len);
+    return framWr(addr, (uint8_t*)buf, len);
 }
 
 bool isFramInitialized() {
@@ -78,11 +93,11 @@ bool initFRAM() {
 
         // Write magic number
         uint32_t magic = FRAM_MAGIC_NUMBER;
-        fram.write(FRAM_ADDR_MAGIC, (uint8_t*)&magic, 4);
+        framWr(FRAM_ADDR_MAGIC, (uint8_t*)&magic, 4);
 
         // Write version
         uint16_t version = FRAM_DATA_VERSION;
-        fram.write(FRAM_ADDR_VERSION, (uint8_t*)&version, 2);
+        framWr(FRAM_ADDR_VERSION, (uint8_t*)&version, 2);
 
         LOG_INFO("FRAM header written");
     }
@@ -92,10 +107,10 @@ bool initFRAM() {
     // loadVolumeFromFRAM() handles fallback to RAM default (1.0f) without touching FRAM.
     {
         uint8_t vbuf[4];
-        fram.read(FRAM_ADDR_VOLUME_ML, vbuf, 4);
+        framRd(FRAM_ADDR_VOLUME_ML, vbuf, 4);
         uint16_t vcalc = calculateChecksum(vbuf, 4);
         uint16_t vstored = 0;
-        fram.read(FRAM_ADDR_CHECKSUM, (uint8_t*)&vstored, 2);
+        framRd(FRAM_ADDR_CHECKSUM, (uint8_t*)&vstored, 2);
 
         if (vcalc != vstored) {
             LOG_WARNING("Volume checksum mismatch (calc=%u stored=%u) — loadVolumeFromFRAM will use RAM default", vcalc, vstored);
@@ -109,15 +124,15 @@ bool initFRAM() {
     // Validate cycle metadata against FRAM_MAX_CYCLES (handles 200→30 transition)
     uint16_t bootCycleCount = 0;
     uint16_t bootWriteIndex = 0;
-    fram.read(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&bootCycleCount, 2);
-    fram.read(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&bootWriteIndex, 2);
+    framRd(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&bootCycleCount, 2);
+    framRd(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&bootWriteIndex, 2);
 
     if (bootCycleCount > FRAM_MAX_CYCLES || bootWriteIndex >= FRAM_MAX_CYCLES) {
         LOG_WARNING("Cycle metadata out of range (count=%d, index=%d, max=%d), resetting",
                     bootCycleCount, bootWriteIndex, FRAM_MAX_CYCLES);
         uint16_t zero = 0;
-        fram.write(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&zero, 2);
-        fram.write(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&zero, 2);
+        framWr(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&zero, 2);
+        framWr(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&zero, 2);
         LOG_INFO("Cycle ring buffer reset");
     }
 
@@ -128,7 +143,7 @@ bool verifyFRAM() {
     
     // Check magic number
     uint32_t magic = 0;
-    fram.read(FRAM_ADDR_MAGIC, (uint8_t*)&magic, 4);
+    framRd(FRAM_ADDR_MAGIC, (uint8_t*)&magic, 4);
     
     if (magic != FRAM_MAGIC_NUMBER) {
         LOG_WARNING("");
@@ -138,7 +153,7 @@ bool verifyFRAM() {
     
     // Check version
     uint16_t version = 0;
-    fram.read(FRAM_ADDR_VERSION, (uint8_t*)&version, 2);
+    framRd(FRAM_ADDR_VERSION, (uint8_t*)&version, 2);
     
     if (version != FRAM_DATA_VERSION) {
         // Auto-upgrade from version 1 to 2
@@ -156,7 +171,7 @@ bool verifyFRAM() {
                 
             // Update version
             uint16_t newVersion = FRAM_DATA_VERSION;
-            fram.write(FRAM_ADDR_VERSION, (uint8_t*)&newVersion, 2);
+            framWr(FRAM_ADDR_VERSION, (uint8_t*)&newVersion, 2);
             
             LOG_INFO("");
             LOG_INFO("FRAM upgraded to version %d", FRAM_DATA_VERSION);
@@ -179,7 +194,7 @@ bool loadVolumeFromFRAM(float& volume) {
     }
     
     // Read volume value
-    fram.read(FRAM_ADDR_VOLUME_ML, (uint8_t*)&volume, 4);
+    framRd(FRAM_ADDR_VOLUME_ML, (uint8_t*)&volume, 4);
     
     // Verify checksum
     uint8_t buffer[4];
@@ -187,7 +202,7 @@ bool loadVolumeFromFRAM(float& volume) {
     uint16_t calculatedChecksum = calculateChecksum(buffer, 4);
     
     uint16_t storedChecksum = 0;
-    fram.read(FRAM_ADDR_CHECKSUM, (uint8_t*)&storedChecksum, 2);
+    framRd(FRAM_ADDR_CHECKSUM, (uint8_t*)&storedChecksum, 2);
     
     if (calculatedChecksum != storedChecksum) {
         LOG_ERROR("");
@@ -223,17 +238,17 @@ bool saveVolumeToFRAM(float volume) {
     }
 
     // Write volume
-    fram.write(FRAM_ADDR_VOLUME_ML, (uint8_t*)&volume, 4);
+    framWr(FRAM_ADDR_VOLUME_ML, (uint8_t*)&volume, 4);
     
     // Calculate and write checksum
     uint8_t buffer[4];
     memcpy(buffer, &volume, 4);
     uint16_t checksum = calculateChecksum(buffer, 4);
-    fram.write(FRAM_ADDR_CHECKSUM, (uint8_t*)&checksum, 2);
+    framWr(FRAM_ADDR_CHECKSUM, (uint8_t*)&checksum, 2);
     
     // Verify write: float value
     float readBack = 0;
-    fram.read(FRAM_ADDR_VOLUME_ML, (uint8_t*)&readBack, 4);
+    framRd(FRAM_ADDR_VOLUME_ML, (uint8_t*)&readBack, 4);
     if (abs(readBack - volume) > 0.01f) {
         LOG_ERROR("");
         LOG_ERROR("FRAM float write verification failed! Wrote: %.4f, Read: %.4f", volume, readBack);
@@ -242,7 +257,7 @@ bool saveVolumeToFRAM(float volume) {
 
     // Verify write: checksum
     uint16_t readBackChk = 0;
-    fram.read(FRAM_ADDR_CHECKSUM, (uint8_t*)&readBackChk, 2);
+    framRd(FRAM_ADDR_CHECKSUM, (uint8_t*)&readBackChk, 2);
     if (readBackChk != checksum) {
         LOG_ERROR("");
         LOG_ERROR("FRAM checksum write verification failed! Wrote: %u, Read: %u", checksum, readBackChk);
@@ -268,8 +283,8 @@ void testFRAM() {
                             0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     uint8_t readData[16];
     
-    fram.write(0x1000, testData, 16);  // Test address at 4KB offset
-    fram.read(0x1000, readData, 16);
+    framWr(0x1000, testData, 16);  // Test address at 4KB offset
+    framRd(0x1000, readData, 16);
     
     bool testPassed = true;
     for (int i = 0; i < 16; i++) {
@@ -319,23 +334,23 @@ bool saveCycleToFRAM(const PumpCycle& cycle) {
     uint16_t cycleCount = 0;
     uint16_t writeIndex = 0;
     
-    fram.read(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
-    fram.read(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&writeIndex, 2);
+    framRd(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
+    framRd(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&writeIndex, 2);
     
     // Calculate write address
     uint16_t writeAddr = FRAM_ADDR_CYCLE_DATA + (writeIndex * FRAM_CYCLE_SIZE);
     
     // Write cycle data
-    fram.write(writeAddr, (uint8_t*)&cycle, sizeof(PumpCycle));
+    framWr(writeAddr, (uint8_t*)&cycle, sizeof(PumpCycle));
     
     // Update circular buffer index
     writeIndex = (writeIndex + 1) % FRAM_MAX_CYCLES;
-    fram.write(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&writeIndex, 2);
+    framWr(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&writeIndex, 2);
     
     // Update count (max FRAM_MAX_CYCLES)
     if (cycleCount < FRAM_MAX_CYCLES) {
         cycleCount++;
-        fram.write(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
+        framWr(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
     }
     LOG_INFO("");
     LOG_INFO("Cycle saved to FRAM at index %d (total: %d)", 
@@ -357,8 +372,8 @@ bool loadCyclesFromFRAM(std::vector<PumpCycle>& cycles, uint16_t maxCount) {
     uint16_t cycleCount = 0;
     uint16_t writeIndex = 0;
     
-    fram.read(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
-    fram.read(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&writeIndex, 2);
+    framRd(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
+    framRd(FRAM_ADDR_CYCLE_INDEX, (uint8_t*)&writeIndex, 2);
     
     if (cycleCount == 0) {
         LOG_INFO("");
@@ -385,7 +400,7 @@ bool loadCyclesFromFRAM(std::vector<PumpCycle>& cycles, uint16_t maxCount) {
         uint16_t readAddr = FRAM_ADDR_CYCLE_DATA + (readIndex * FRAM_CYCLE_SIZE);
         
         PumpCycle cycle;
-        fram.read(readAddr, (uint8_t*)&cycle, sizeof(PumpCycle));
+        framRd(readAddr, (uint8_t*)&cycle, sizeof(PumpCycle));
         
         // Basic validation
         if (cycle.timestamp > 0 && cycle.timestamp < 0xFFFFFFFF) {
@@ -403,7 +418,7 @@ uint16_t getCycleCountFromFRAM() {
     if (!framInitialized) return 0;
     
     uint16_t cycleCount = 0;
-    fram.read(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
+    framRd(FRAM_ADDR_CYCLE_COUNT, (uint8_t*)&cycleCount, 2);
     return cycleCount;
 }
 
@@ -429,15 +444,15 @@ bool loadErrorStatsFromFRAM(ErrorStats& stats) {
     }
     
     // Read stats data
-    fram.read(FRAM_ADDR_GAP1_SUM, (uint8_t*)&stats.gap1_fail_sum, 2);
-    fram.read(FRAM_ADDR_GAP2_SUM, (uint8_t*)&stats.gap2_fail_sum, 2);
-    fram.read(FRAM_ADDR_WATER_SUM, (uint8_t*)&stats.water_fail_sum, 2);
-    fram.read(FRAM_ADDR_LAST_RESET, (uint8_t*)&stats.last_reset_timestamp, 4);
+    framRd(FRAM_ADDR_GAP1_SUM, (uint8_t*)&stats.gap1_fail_sum, 2);
+    framRd(FRAM_ADDR_GAP2_SUM, (uint8_t*)&stats.gap2_fail_sum, 2);
+    framRd(FRAM_ADDR_WATER_SUM, (uint8_t*)&stats.water_fail_sum, 2);
+    framRd(FRAM_ADDR_LAST_RESET, (uint8_t*)&stats.last_reset_timestamp, 4);
     
     // Verify checksum
     uint16_t calculatedChecksum = calculateStatsChecksum(stats);
     uint16_t storedChecksum = 0;
-    fram.read(FRAM_ADDR_STATS_CHKSUM, (uint8_t*)&storedChecksum, 2);
+    framRd(FRAM_ADDR_STATS_CHKSUM, (uint8_t*)&storedChecksum, 2);
     
     if (calculatedChecksum != storedChecksum) {
         LOG_WARNING("");
@@ -468,20 +483,20 @@ bool saveErrorStatsToFRAM(const ErrorStats& stats) {
     }
     
     // Write stats data
-    fram.write(FRAM_ADDR_GAP1_SUM, (uint8_t*)&stats.gap1_fail_sum, 2);
-    fram.write(FRAM_ADDR_GAP2_SUM, (uint8_t*)&stats.gap2_fail_sum, 2);
-    fram.write(FRAM_ADDR_WATER_SUM, (uint8_t*)&stats.water_fail_sum, 2);
-    fram.write(FRAM_ADDR_LAST_RESET, (uint8_t*)&stats.last_reset_timestamp, 4);
+    framWr(FRAM_ADDR_GAP1_SUM, (uint8_t*)&stats.gap1_fail_sum, 2);
+    framWr(FRAM_ADDR_GAP2_SUM, (uint8_t*)&stats.gap2_fail_sum, 2);
+    framWr(FRAM_ADDR_WATER_SUM, (uint8_t*)&stats.water_fail_sum, 2);
+    framWr(FRAM_ADDR_LAST_RESET, (uint8_t*)&stats.last_reset_timestamp, 4);
     
     // Calculate and write checksum
     uint16_t checksum = calculateStatsChecksum(stats);
-    fram.write(FRAM_ADDR_STATS_CHKSUM, (uint8_t*)&checksum, 2);
+    framWr(FRAM_ADDR_STATS_CHKSUM, (uint8_t*)&checksum, 2);
     
     // Verify write by reading back
     ErrorStats readBack;
-    fram.read(FRAM_ADDR_GAP1_SUM, (uint8_t*)&readBack.gap1_fail_sum, 2);
-    fram.read(FRAM_ADDR_GAP2_SUM, (uint8_t*)&readBack.gap2_fail_sum, 2);
-    fram.read(FRAM_ADDR_WATER_SUM, (uint8_t*)&readBack.water_fail_sum, 2);
+    framRd(FRAM_ADDR_GAP1_SUM, (uint8_t*)&readBack.gap1_fail_sum, 2);
+    framRd(FRAM_ADDR_GAP2_SUM, (uint8_t*)&readBack.gap2_fail_sum, 2);
+    framRd(FRAM_ADDR_WATER_SUM, (uint8_t*)&readBack.water_fail_sum, 2);
     
     if (readBack.gap1_fail_sum != stats.gap1_fail_sum ||
         readBack.gap2_fail_sum != stats.gap2_fail_sum ||
@@ -588,7 +603,7 @@ bool readCredentialsFromFRAM(FRAMCredentials& creds) {
     }
     
     // Read credentials structure from FRAM
-    fram.read(FRAM_CREDENTIALS_ADDR, (uint8_t*)&creds, sizeof(FRAMCredentials));
+    framRd(FRAM_CREDENTIALS_ADDR, (uint8_t*)&creds, sizeof(FRAMCredentials));
     LOG_INFO("");
     LOG_INFO("Read credentials from FRAM at address 0x%04X", FRAM_CREDENTIALS_ADDR);
     return true;
@@ -620,10 +635,10 @@ bool writeCredentialsToFRAM(const FRAMCredentials& creds) {
             }
         }
 
-        fram.write(FRAM_CREDENTIALS_ADDR, (uint8_t*)&creds, sizeof(FRAMCredentials));
+        framWr(FRAM_CREDENTIALS_ADDR, (uint8_t*)&creds, sizeof(FRAMCredentials));
 
         FRAMCredentials verify_creds;
-        fram.read(FRAM_CREDENTIALS_ADDR, (uint8_t*)&verify_creds, sizeof(FRAMCredentials));
+        framRd(FRAM_CREDENTIALS_ADDR, (uint8_t*)&verify_creds, sizeof(FRAMCredentials));
 
         if (memcmp(&creds, &verify_creds, sizeof(FRAMCredentials)) == 0) {
             LOG_INFO("");
@@ -711,19 +726,19 @@ bool saveDailyVolumeToFRAM(uint16_t dailyVolume, uint32_t utcDay) {
     data.last_reset_utc_day = utcDay;
     
     // Write volume
-    fram.write(FRAM_ADDR_DAILY_VOLUME, (uint8_t*)&data.volume_ml, 2);
+    framWr(FRAM_ADDR_DAILY_VOLUME, (uint8_t*)&data.volume_ml, 2);
     
     // Write UTC day
-    fram.write(FRAM_ADDR_LAST_RESET_UTC, (uint8_t*)&data.last_reset_utc_day, 4);
+    framWr(FRAM_ADDR_LAST_RESET_UTC, (uint8_t*)&data.last_reset_utc_day, 4);
     
     // Calculate and write checksum
     uint16_t checksum = calculateDailyVolumeChecksum(data);
-    fram.write(FRAM_ADDR_DAILY_CHECKSUM, (uint8_t*)&checksum, 2);
+    framWr(FRAM_ADDR_DAILY_CHECKSUM, (uint8_t*)&checksum, 2);
     
     // Verify write
     DailyVolumeData verify;
-    fram.read(FRAM_ADDR_DAILY_VOLUME, (uint8_t*)&verify.volume_ml, 2);
-    fram.read(FRAM_ADDR_LAST_RESET_UTC, (uint8_t*)&verify.last_reset_utc_day, 4);
+    framRd(FRAM_ADDR_DAILY_VOLUME, (uint8_t*)&verify.volume_ml, 2);
+    framRd(FRAM_ADDR_LAST_RESET_UTC, (uint8_t*)&verify.last_reset_utc_day, 4);
     
     if (verify.volume_ml != dailyVolume || verify.last_reset_utc_day != utcDay) {
         LOG_ERROR("");
@@ -743,13 +758,13 @@ bool loadDailyVolumeFromFRAM(uint16_t& dailyVolume, uint32_t& utcDay) {
     }
     
     DailyVolumeData data;
-    fram.read(FRAM_ADDR_DAILY_VOLUME, (uint8_t*)&data.volume_ml, 2);
-    fram.read(FRAM_ADDR_LAST_RESET_UTC, (uint8_t*)&data.last_reset_utc_day, 4);
+    framRd(FRAM_ADDR_DAILY_VOLUME, (uint8_t*)&data.volume_ml, 2);
+    framRd(FRAM_ADDR_LAST_RESET_UTC, (uint8_t*)&data.last_reset_utc_day, 4);
     
     // Verify checksum
     uint16_t calculatedChecksum = calculateDailyVolumeChecksum(data);
     uint16_t storedChecksum = 0;
-    fram.read(FRAM_ADDR_DAILY_CHECKSUM, (uint8_t*)&storedChecksum, 2);
+    framRd(FRAM_ADDR_DAILY_CHECKSUM, (uint8_t*)&storedChecksum, 2);
     
     if (calculatedChecksum != storedChecksum) {
         LOG_WARNING("");
@@ -796,14 +811,14 @@ bool saveFillWaterMaxToFRAM(uint16_t fillWaterMax) {
         return false;
     }
     
-    fram.write(FRAM_ADDR_FILL_WATER_MAX, (uint8_t*)&fillWaterMax, 2);
+    framWr(FRAM_ADDR_FILL_WATER_MAX, (uint8_t*)&fillWaterMax, 2);
     
     uint16_t checksum = calculateFillMaxChecksum(fillWaterMax);
-    fram.write(FRAM_ADDR_FILL_MAX_CHKSUM, (uint8_t*)&checksum, 2);
+    framWr(FRAM_ADDR_FILL_MAX_CHKSUM, (uint8_t*)&checksum, 2);
     
     // Verify write
     uint16_t verifyValue = 0;
-    fram.read(FRAM_ADDR_FILL_WATER_MAX, (uint8_t*)&verifyValue, 2);
+    framRd(FRAM_ADDR_FILL_WATER_MAX, (uint8_t*)&verifyValue, 2);
     
     if (verifyValue != fillWaterMax) {
         LOG_ERROR("");
@@ -823,11 +838,11 @@ bool loadFillWaterMaxFromFRAM(uint16_t& fillWaterMax) {
         return false;
     }
     
-    fram.read(FRAM_ADDR_FILL_WATER_MAX, (uint8_t*)&fillWaterMax, 2);
+    framRd(FRAM_ADDR_FILL_WATER_MAX, (uint8_t*)&fillWaterMax, 2);
     
     uint16_t calculatedChecksum = calculateFillMaxChecksum(fillWaterMax);
     uint16_t storedChecksum = 0;
-    fram.read(FRAM_ADDR_FILL_MAX_CHKSUM, (uint8_t*)&storedChecksum, 2);
+    framRd(FRAM_ADDR_FILL_MAX_CHKSUM, (uint8_t*)&storedChecksum, 2);
     
     if (calculatedChecksum != storedChecksum) {
         LOG_WARNING("");
@@ -861,19 +876,19 @@ bool saveTopOffRecord(const TopOffRecord& record) {
     // Odczytaj aktualny write pointer i count
     uint16_t wptr  = 0;
     uint16_t count = 0;
-    fram.read(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
-    fram.read(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
+    framRd(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
+    framRd(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
 
     if (wptr >= TOPOFF_HISTORY_SIZE) wptr = 0;
 
     uint16_t addr = FRAM_ADDR_TOPOFF_DATA + wptr * FRAM_TOPOFF_RECORD_SIZE;
-    fram.write(addr, (uint8_t*)&record, FRAM_TOPOFF_RECORD_SIZE);
+    framWr(addr, (uint8_t*)&record, FRAM_TOPOFF_RECORD_SIZE);
 
     wptr = (wptr + 1) % TOPOFF_HISTORY_SIZE;
     if (count < TOPOFF_HISTORY_SIZE) count++;
 
-    fram.write(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
-    fram.write(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
+    framWr(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
+    framWr(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
 
     LOG_INFO("TopOffRecord saved: ts=%lu cycle=%d (slot=%d, total=%d)",
              record.timestamp, record.cycle_num, (wptr - 1 + TOPOFF_HISTORY_SIZE) % TOPOFF_HISTORY_SIZE, count);
@@ -885,8 +900,8 @@ uint16_t loadTopOffHistory(TopOffRecord* buf, uint16_t maxCount) {
 
     uint16_t count = 0;
     uint16_t wptr  = 0;
-    fram.read(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
-    fram.read(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
+    framRd(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
+    framRd(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
 
     if (count > TOPOFF_HISTORY_SIZE) count = TOPOFF_HISTORY_SIZE;
     if (count > maxCount)            count = maxCount;
@@ -899,7 +914,7 @@ uint16_t loadTopOffHistory(TopOffRecord* buf, uint16_t maxCount) {
     for (uint16_t i = 0; i < count; i++) {
         uint16_t slot = (startSlot + i) % TOPOFF_HISTORY_SIZE;
         uint16_t addr = FRAM_ADDR_TOPOFF_DATA + slot * FRAM_TOPOFF_RECORD_SIZE;
-        fram.read(addr, (uint8_t*)&buf[i], FRAM_TOPOFF_RECORD_SIZE);
+        framRd(addr, (uint8_t*)&buf[i], FRAM_TOPOFF_RECORD_SIZE);
     }
 
     return count;
@@ -910,38 +925,38 @@ bool loadLastTopOffRecord(TopOffRecord& record) {
 
     uint16_t count = 0;
     uint16_t wptr  = 0;
-    fram.read(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
-    fram.read(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
+    framRd(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
+    framRd(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&wptr,  2);
 
     if (count == 0) return false;
 
     uint16_t lastSlot = (wptr == 0) ? (TOPOFF_HISTORY_SIZE - 1) : (wptr - 1);
     uint16_t addr = FRAM_ADDR_TOPOFF_DATA + lastSlot * FRAM_TOPOFF_RECORD_SIZE;
-    fram.read(addr, (uint8_t*)&record, FRAM_TOPOFF_RECORD_SIZE);
+    framRd(addr, (uint8_t*)&record, FRAM_TOPOFF_RECORD_SIZE);
     return true;
 }
 
 uint16_t getTopOffRecordCount() {
     if (!framInitialized) return 0;
     uint16_t count = 0;
-    fram.read(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
+    framRd(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
     return (count > TOPOFF_HISTORY_SIZE) ? TOPOFF_HISTORY_SIZE : count;
 }
 
 bool isTopOffRingBufferValid() {
     if (!framInitialized) return false;
     uint16_t count = 0;
-    fram.read(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
+    framRd(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&count, 2);
     return (count <= TOPOFF_HISTORY_SIZE);
 }
 
 bool clearTopOffRingBuffer() {
     if (!framInitialized) return false;
     uint16_t zero = 0;
-    fram.write(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&zero, 2);
-    fram.write(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&zero, 2);
+    framWr(FRAM_ADDR_TOPOFF_COUNT, (uint8_t*)&zero, 2);
+    framWr(FRAM_ADDR_TOPOFF_WPTR,  (uint8_t*)&zero, 2);
     uint16_t badChksum = 0xFFFF;
-    fram.write(FRAM_ADDR_EMA_CHKSUM, (uint8_t*)&badChksum, 2);
+    framWr(FRAM_ADDR_EMA_CHKSUM, (uint8_t*)&badChksum, 2);
     LOG_INFO("TopOff ring buffer and EMA cleared");
     return true;
 }
@@ -955,10 +970,10 @@ static_assert(sizeof(EmaBlock) == 16, "EmaBlock size mismatch!");
 bool saveEmaBlockToFRAM(const EmaBlock& ema) {
     if (!framInitialized) return false;
 
-    fram.write(FRAM_ADDR_EMA_BLOCK, (uint8_t*)&ema, sizeof(EmaBlock));
+    framWr(FRAM_ADDR_EMA_BLOCK, (uint8_t*)&ema, sizeof(EmaBlock));
 
     uint16_t chksum = calculateChecksum((uint8_t*)&ema, sizeof(EmaBlock));
-    fram.write(FRAM_ADDR_EMA_CHKSUM, (uint8_t*)&chksum, 2);
+    framWr(FRAM_ADDR_EMA_CHKSUM, (uint8_t*)&chksum, 2);
 
     LOG_INFO("EMA block saved: rate=%.2f score=%.2f int=%.0fs bootstrap=%d",
              ema.ema_rate_ml_h, ema.alarm_score, ema.ema_interval_s, ema.bootstrap_count);
@@ -969,10 +984,10 @@ bool loadEmaBlockFromFRAM(EmaBlock& ema) {
     if (!framInitialized) return false;
 
     EmaBlock tmp;
-    fram.read(FRAM_ADDR_EMA_BLOCK, (uint8_t*)&tmp, sizeof(EmaBlock));
+    framRd(FRAM_ADDR_EMA_BLOCK, (uint8_t*)&tmp, sizeof(EmaBlock));
 
     uint16_t stored = 0;
-    fram.read(FRAM_ADDR_EMA_CHKSUM, (uint8_t*)&stored, 2);
+    framRd(FRAM_ADDR_EMA_CHKSUM, (uint8_t*)&stored, 2);
 
     uint16_t calc = calculateChecksum((uint8_t*)&tmp, sizeof(EmaBlock));
     if (calc != stored) {
@@ -993,10 +1008,10 @@ static_assert(sizeof(TopOffConfig) == 40, "TopOffConfig size mismatch!");
 bool saveTopOffConfigToFRAM(const TopOffConfig& cfg) {
     if (!framInitialized) return false;
 
-    fram.write(FRAM_ADDR_TOPOFF_CONFIG, (uint8_t*)&cfg, sizeof(TopOffConfig));
+    framWr(FRAM_ADDR_TOPOFF_CONFIG, (uint8_t*)&cfg, sizeof(TopOffConfig));
 
     uint16_t chksum = calculateChecksum((uint8_t*)&cfg, sizeof(TopOffConfig));
-    fram.write(FRAM_ADDR_TOPOFF_CFG_CHKSUM, (uint8_t*)&chksum, 2);
+    framWr(FRAM_ADDR_TOPOFF_CFG_CHKSUM, (uint8_t*)&chksum, 2);
 
     LOG_INFO("TopOffConfig saved: dose=%d ml daily=%d ml window=%lu",
              cfg.dose_ml, cfg.daily_limit_ml, cfg.history_window_s);
@@ -1007,10 +1022,10 @@ bool loadTopOffConfigFromFRAM(TopOffConfig& cfg) {
     if (!framInitialized) return false;
 
     TopOffConfig tmp;
-    fram.read(FRAM_ADDR_TOPOFF_CONFIG, (uint8_t*)&tmp, sizeof(TopOffConfig));
+    framRd(FRAM_ADDR_TOPOFF_CONFIG, (uint8_t*)&tmp, sizeof(TopOffConfig));
 
     uint16_t stored = 0;
-    fram.read(FRAM_ADDR_TOPOFF_CFG_CHKSUM, (uint8_t*)&stored, 2);
+    framRd(FRAM_ADDR_TOPOFF_CFG_CHKSUM, (uint8_t*)&stored, 2);
 
     uint16_t calc = calculateChecksum((uint8_t*)&tmp, sizeof(TopOffConfig));
     if (calc != stored) {
@@ -1029,9 +1044,9 @@ bool loadTopOffConfigFromFRAM(TopOffConfig& cfg) {
 bool saveReservoirConfigToFRAM(const ReservoirConfig& cfg) {
     if (!framInitialized) return false;
 
-    fram.write(FRAM_ADDR_RESERVOIR_CFG, (uint8_t*)&cfg, sizeof(ReservoirConfig));
+    framWr(FRAM_ADDR_RESERVOIR_CFG, (uint8_t*)&cfg, sizeof(ReservoirConfig));
     uint16_t chksum = calculateChecksum((uint8_t*)&cfg, sizeof(ReservoirConfig));
-    fram.write(FRAM_ADDR_RESERVOIR_CHKSUM, (uint8_t*)&chksum, 2);
+    framWr(FRAM_ADDR_RESERVOIR_CHKSUM, (uint8_t*)&chksum, 2);
     return true;
 }
 
@@ -1039,9 +1054,9 @@ bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg) {
     if (!framInitialized) return false;
 
     ReservoirConfig tmp;
-    fram.read(FRAM_ADDR_RESERVOIR_CFG, (uint8_t*)&tmp, sizeof(ReservoirConfig));
+    framRd(FRAM_ADDR_RESERVOIR_CFG, (uint8_t*)&tmp, sizeof(ReservoirConfig));
     uint16_t stored = 0;
-    fram.read(FRAM_ADDR_RESERVOIR_CHKSUM, (uint8_t*)&stored, 2);
+    framRd(FRAM_ADDR_RESERVOIR_CHKSUM, (uint8_t*)&stored, 2);
 
     if (tmp.magic != RESERVOIR_CONFIG_MAGIC ||
         calculateChecksum((uint8_t*)&tmp, sizeof(ReservoirConfig)) != stored) {
@@ -1054,9 +1069,9 @@ bool loadReservoirConfigFromFRAM(ReservoirConfig& cfg) {
 bool saveReserveTrackToFRAM(const ReserveTrack& t) {
     if (!framInitialized) return false;
 
-    fram.write(FRAM_ADDR_RESERVE_TRACK, (uint8_t*)&t, sizeof(ReserveTrack));
+    framWr(FRAM_ADDR_RESERVE_TRACK, (uint8_t*)&t, sizeof(ReserveTrack));
     uint16_t chksum = calculateChecksum((uint8_t*)&t, sizeof(ReserveTrack));
-    fram.write(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&chksum, 2);
+    framWr(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&chksum, 2);
     return true;
 }
 
@@ -1064,9 +1079,9 @@ bool loadReserveTrackFromFRAM(ReserveTrack& t) {
     if (!framInitialized) return false;
 
     ReserveTrack tmp;
-    fram.read(FRAM_ADDR_RESERVE_TRACK, (uint8_t*)&tmp, sizeof(ReserveTrack));
+    framRd(FRAM_ADDR_RESERVE_TRACK, (uint8_t*)&tmp, sizeof(ReserveTrack));
     uint16_t stored = 0;
-    fram.read(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&stored, 2);
+    framRd(FRAM_ADDR_RESERVE_CHKSUM, (uint8_t*)&stored, 2);
 
     if (tmp.magic != RESERVE_TRACK_MAGIC ||
         calculateChecksum((uint8_t*)&tmp, sizeof(ReserveTrack)) != stored) {
@@ -1079,9 +1094,9 @@ bool loadReserveTrackFromFRAM(ReserveTrack& t) {
 bool saveAlgErrorStateToFRAM(const AlgErrorState& st) {
     if (!framInitialized) return false;
 
-    fram.write(FRAM_ADDR_ALG_ERROR, (uint8_t*)&st, sizeof(AlgErrorState));
+    framWr(FRAM_ADDR_ALG_ERROR, (uint8_t*)&st, sizeof(AlgErrorState));
     uint16_t chksum = calculateChecksum((uint8_t*)&st, sizeof(AlgErrorState));
-    fram.write(FRAM_ADDR_ALG_ERROR_CHKSUM, (uint8_t*)&chksum, 2);
+    framWr(FRAM_ADDR_ALG_ERROR_CHKSUM, (uint8_t*)&chksum, 2);
     return true;
 }
 
@@ -1089,9 +1104,9 @@ bool loadAlgErrorStateFromFRAM(AlgErrorState& st) {
     if (!framInitialized) return false;
 
     AlgErrorState tmp;
-    fram.read(FRAM_ADDR_ALG_ERROR, (uint8_t*)&tmp, sizeof(AlgErrorState));
+    framRd(FRAM_ADDR_ALG_ERROR, (uint8_t*)&tmp, sizeof(AlgErrorState));
     uint16_t stored = 0;
-    fram.read(FRAM_ADDR_ALG_ERROR_CHKSUM, (uint8_t*)&stored, 2);
+    framRd(FRAM_ADDR_ALG_ERROR_CHKSUM, (uint8_t*)&stored, 2);
 
     if (tmp.magic != ALG_ERROR_STATE_MAGIC ||
         calculateChecksum((uint8_t*)&tmp, sizeof(AlgErrorState)) != stored) {

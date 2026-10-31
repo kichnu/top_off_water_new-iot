@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include "../network/wifi_manager.h"
+#include "hw_health.h"
 
 
 // ===============================
@@ -463,6 +464,7 @@ unsigned long getUnixTimestamp() {
         }
         
         if (!validRead) {
+            noteRtcIoError();
             static uint32_t lastError = 0;
             if (millis() - lastError > 10000) {
                 LOG_ERROR("RTC read failed in getUnixTimestamp(), year: %d", now.year());
@@ -488,6 +490,51 @@ bool isRTCWorking() {
         DateTime now = rtc.now();
         return (now.year() >= 2020 && now.year() <= 2035);
     }
+}
+
+// The boot init runs before Wi-Fi, so NTP never helps there. Here: a DS3231 that
+// answers with a valid time and kept its power is taken back at once, otherwise
+// it is set from NTP once SNTP (started here, runs in the background) has the time
+bool retryRTC() {
+    if (!useInternalRTC && !rtcNeedsSync) return true;
+
+    Wire.beginTransmission(0x68);
+    if (Wire.endTransmission() != 0 || !rtc.begin()) return false;
+    DateTime t = rtc.now();
+    bool valid = t.year() >= 2024 && t.year() <= 2035;
+    if (useInternalRTC && valid && !rtc.lostPower() && !batteryIssueDetected) {
+        useInternalRTC = false;
+        rtcNeedsSync   = false;
+        rtcInitialized = true;
+        LOG_INFO("RTC: DS3231 answers with a valid time — back in use");
+        return true;
+    }
+
+    if (!isWiFiConnected()) return false;
+    static bool sntpStarted = false;
+    if (!sntpStarted) {
+        configTzTime(POLAND_TZ, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
+        sntpStarted = true;
+        LOG_INFO("RTC: NTP sync started in the background");
+        return false;
+    }
+    time_t now = 0;
+    time(&now);
+    if (now < 1600000000) return false;   // no NTP time yet
+
+    rtc.adjust(DateTime((uint32_t)now));
+    t = rtc.now();
+    if (t.year() < 2024 || t.year() > 2035) {
+        LOG_ERROR("RTC: DS3231 set from NTP but reads back an invalid year %d", t.year());
+        return false;
+    }
+    useInternalRTC = false;
+    rtcNeedsSync   = false;
+    rtcInitialized = true;
+    lastNTPSync    = millis();
+    LOG_INFO("RTC: DS3231 set from NTP (%04d-%02d-%02d %02d:%02d:%02d UTC) — in use",
+             t.year(), t.month(), t.day(), t.hour(), t.minute(), t.second());
+    return true;
 }
 
 String getRTCInfo() {

@@ -16,6 +16,7 @@
 #include "../config/credentials_manager.h"
 #include "../algorithm/water_algorithm.h"
 #include "../hardware/reserve_controller.h"
+#include "../hardware/hw_health.h"
 #include "../hardware/pump_calibration.h"
 #include "../hardware/level_sensor.h"
 #include "../hardware/level_event_log.h"
@@ -170,6 +171,13 @@ void handleStatus(AsyncWebServerRequest* request) {
     json["rtc_hardware"] = isRTCHardware(); 
     json["rtc_needs_sync"] = rtcNeedsSynchronization();
     json["rtc_battery_issue"] = isBatteryIssueDetected();
+
+    // Critical hardware (FRAM, RTC): latched alarm + what fails now
+    json["hw_alarm"]       = isHwFaultAlarm();
+    json["hw_alarm_text"]  = getHwFaultText();
+    json["hw_alarm_since"] = getHwFaultSinceTs();   // unix, 0 = unknown
+    json["fram_ok"]        = !(getHwFaultActive() & HW_FAULT_FRAM);
+    json["rtc_ok"]         = !(getHwFaultActive() & HW_FAULT_RTC);
     json["free_heap"] = ESP.getFreeHeap();
     json["uptime"] = millis();
 
@@ -671,6 +679,7 @@ void handleSystemReset(AsyncWebServerRequest* request) {
     json["state"]   = waterAlgorithm.getStateString();
     json["message"] = success ? "System reset to IDLE" : "Reset blocked - logging in progress";
     if (isReserveEmpty()) json["reserve_alarm"] = getReserveAlarmString();   // stays until refilled
+    if (isHwFaultAlarm()) json["hw_alarm"] = getHwFaultText();               // stays while failing
 
     String response;
     serializeJson(json, response);
@@ -688,12 +697,23 @@ void handleHealth(AsyncWebServerRequest *request) {
         return;
     }
 
-    String json = "{";
-    json += "\"status\":\"ok\",";
-    json += "\"device_name\":\"" + String(getDeviceID()) + "\",";
-    json += "\"uptime\":" + String(millis());
-    json += "}";
+    // "status" stays "ok" (reachability contract of the VPS dashboard);
+    // "alarm" = any critical alarm, the one that drives the buzzer
+    JsonDocument doc;
+    doc["status"]      = "ok";
+    doc["device_name"] = getDeviceID();
+    doc["uptime"]      = millis();
+    String text;
+    auto add = [&text](const String& s) { if (text.length()) text += " | "; text += s; };
+    if (isHwFaultAlarm())                         add("HARDWARE: " + getHwFaultText());
+    if (isReserveEmpty())                         add(String("RESERVOIR: ") + getReserveAlarmString());
+    if (waterAlgorithm.getState() == STATE_ERROR) add(String("ATO: ") + waterAlgorithm.getStateDescription());
+    if (waterAlgorithm.isNoTopOffAlarm())         add("NO TOP-OFF FOR 24 h");
+    doc["alarm"] = text.length() > 0;
+    if (text.length()) doc["alarm_text"] = text;
 
+    String json;
+    serializeJson(doc, json);
     request->send(200, "application/json", json);
 }
 

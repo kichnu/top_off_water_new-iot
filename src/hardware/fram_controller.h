@@ -98,7 +98,8 @@ struct PumpCycle {
 // ATO error latch, anomaly alarm disarm time, no-top-off watchdog (AlgErrorState) — 12 bytes
 #define FRAM_ADDR_ALG_ERROR         0x05D6   // 12 bytes — AlgErrorState struct (0x05D6–0x05E1)
 #define FRAM_ADDR_ALG_ERROR_CHKSUM  0x05E2   // 2 bytes — checksum
-// 0x05E4–0x05FF: free
+// 0x05E4–0x05FE: free
+#define FRAM_ADDR_HEALTH_SCRATCH    0x05FF   // 1 byte — hw_health write/read-back check
 
 // Ring buffer rekordów dolewek (TopOffRecord, 20 bajtów każdy)
 #define TOPOFF_HISTORY_SIZE         60       // Maksymalnie 60 rekordów (60×20=1200 bajtów)

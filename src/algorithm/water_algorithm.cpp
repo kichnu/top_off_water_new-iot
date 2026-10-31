@@ -756,19 +756,20 @@ const char* WaterAlgorithm::getStateString() const {
 String WaterAlgorithm::getStateDescription() const {
     switch (currentState) {
         case STATE_IDLE:
-            return "Waiting for sensor";
+            // Float still low in IDLE: Service Mode, or a cycle that will start on the next sample
+            return readWaterSensor() ? "Low water level" : "Water level OK";
         case STATE_DEBOUNCING:
-            return String("Debouncing sensor (") +
+            return String("Low water level — confirming (") +
                    getDebounceCounter() + "/" + DEBOUNCE_COUNTER + ")";
         case STATE_PUMPING: {
             float elapsed = (millis() - pumpStartMs) / 1000.0f;
             float total   = getPortionMs() / 1000.0f;
-            return String("Pumping ") + config.dose_ml + "ml (" + String(elapsed, 1) + "/" + String(total, 1) + "s)";
+            return String("Pump running — ") + config.dose_ml + " ml (" + String(elapsed, 1) + " / " + String(total, 1) + " s)";
         }
         case STATE_LOGGING:
-            return "Logging cycle data";
+            return "Top-off done — logging the cycle";
         case STATE_ERROR:
-            if (lastError == ERROR_LOW_RESERVOIR) return "Reservoir alarm — refill and reset";
+            if (lastError == ERROR_LOW_RESERVOIR) return "Low water in the reservoir — refill, then Cycle Reset";
             if (lastError == ERROR_DAILY_LIMIT)   return "Daily limit reached — reset required";
             if (lastError == ERROR_RED_ALERT)     return "Rate anomaly — reset required";
             return String("Error: code ") + (int)lastError + " — reset required";

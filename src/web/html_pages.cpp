@@ -437,11 +437,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
             display: flex; flex-wrap: wrap; gap: 8px;
             margin-top: 5px; font-size: 0.72rem;
         }
-        .sub-on     { color: var(--accent-green); }
-        .sub-off    { color: var(--text-secondary); }
-        .sub-warn   { color: var(--accent-yellow); }
-        .sub-danger { color: var(--accent-red); }
-        .sub-sep    { color: var(--border); }
         .status-main-wifi {
             display: flex; flex-direction: column; align-items: center;
             gap: 2px; flex-shrink: 0; padding-right: 8px;
@@ -782,34 +777,39 @@ const char* DASHBOARD_HTML = R"rawliteral(
             pointer-events: none;
         }
 
-        /* Estimated mode (no level reading): each range up to the minimum estimate as
-           an outline in its own color with a tinted inside (opaque, so the range
-           drawn over another hides its outline) */
-        .res-bar-wrap.is-estimated .res-bar-fill,
-        .res-bar-wrap.is-estimated .res-bar-low-fill,
-        .res-bar-wrap.is-estimated .res-bar-alarm-fill {
+        /* Outline mode — estimate (no level reading): each range up to the minimum
+           estimate as an outline in its own color with a tinted inside (opaque, so the
+           range drawn over another hides its outline); reservoir alarm: the alarm
+           range alone, outlined the same way */
+        .res-bar-wrap.is-outline .res-bar-fill,
+        .res-bar-wrap.is-outline .res-bar-low-fill,
+        .res-bar-wrap.is-outline .res-bar-alarm-fill {
             border: 2px solid;
             border-radius: 7px;
             box-sizing: border-box;
         }
 
-        .res-bar-wrap.is-estimated .res-bar-fill {
+        .res-bar-wrap.is-outline .res-bar-fill {
             border-color: var(--accent-blue);
             background: linear-gradient(rgba(56, 189, 248, 0.3), rgba(56, 189, 248, 0.3)), var(--bg-primary);
         }
 
-        .res-bar-wrap.is-estimated .res-bar-low-fill {
+        .res-bar-wrap.is-outline .res-bar-low-fill {
             border-color: var(--accent-yellow);
             background: linear-gradient(rgba(234, 179, 8, 0.3), rgba(234, 179, 8, 0.3)), var(--bg-primary);
         }
 
-        .res-bar-wrap.is-estimated .res-bar-alarm-fill {
+        .res-bar-wrap.is-outline .res-bar-alarm-fill {
             border-color: var(--accent-red);
             background: linear-gradient(rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.3)), var(--bg-primary);
         }
 
         /* An empty range (width 0) would still show its 2 px border */
-        .res-bar-wrap.is-estimated .is-empty { display: none; }
+        .res-bar-wrap.is-outline .is-empty { display: none; }
+
+        /* Reservoir alarm: the red range only (no faint backgrounds) */
+        .res-bar-wrap.is-alarm-latched .res-bar-low,
+        .res-bar-wrap.is-alarm-latched .res-bar-alarm { display: none; }
 
         .res-bar-alarm {
             position: absolute;
@@ -1038,12 +1038,8 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
             <div class="status-main status-ok" id="statusMain">
                 <div class="status-main-body">
-                    <div class="status-main-desc" id="processDescription">IDLE - Waiting for sensors</div>
+                    <div class="status-main-desc" id="processDescription">&#8212;</div>
                     <div class="status-main-sub">
-                        <span id="sensor1Badge" class="sub-off">Sensor: OFF</span>
-                        <span class="sub-sep">•</span>
-                        <span id="pumpBadge" class="sub-off">Pump: OFF</span>
-                        <span class="sub-sep">•</span>
                         <span class="status-info" id="rtcItem">
                             <span id="rtcTime">—</span><span id="rtcHint"></span>
                             <span class="si-sep">•</span>
@@ -1570,24 +1566,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
         // ============================================
         // STATUS BADGE UPDATES
         // ============================================
-        function updateSensorBadge(badgeId, isActive) {
-            const el = document.getElementById(badgeId);
-            if (!el) return;
-            el.textContent = 'Sensor: ' + (isActive ? 'ON' : 'OFF');
-            el.className = isActive ? 'sub-on' : 'sub-off';
-        }
-
-        function updatePumpBadge(badgeId, isActive, attempt) {
-            const el = document.getElementById(badgeId);
-            if (!el) return;
-            if (!isActive) {
-                el.textContent = 'Pump: OFF'; el.className = 'sub-off';
-            } else {
-                el.textContent = 'Pump: ON';
-                el.className = attempt >= 3 ? 'sub-danger' : attempt === 2 ? 'sub-warn' : 'sub-on';
-            }
-        }
-
         function updateSystemBadge(badgeId, hasError, isDisabled, hasWarning) {
             const main = document.getElementById('statusMain');
             if (!main) return;
@@ -1671,8 +1649,11 @@ const char* DASHBOARD_HTML = R"rawliteral(
             capEl.className = '';
 
             const zones = ['zone-ok', 'zone-reserve', 'zone-alarm', 'zone-unknown'];
+            // Reservoir alarm: only the alarm range, outlined like the estimate
+            const latched = !!d.reserve_empty;
             wrap.className = 'res-bar-wrap ' + (zones[d.res_zone] || 'zone-unknown') +
-                             (d.res_estimated ? ' is-estimated' : '');
+                             (d.res_estimated || latched ? ' is-outline' : '') +
+                             (latched ? ' is-alarm-latched' : '');
             const cap = d.res_capacity_ml || 1;
             const lowPct = Math.min(100, d.res_reserve_ml * 100 / cap);
             const alarmPct = Math.min(100, d.res_alarm_ml * 100 / cap);
@@ -1683,10 +1664,10 @@ const char* DASHBOARD_HTML = R"rawliteral(
                 el.classList.toggle('is-empty', pct <= 0);
             };
             setW('resBarLow', lowPct);
-            setW('resBarLowFill', Math.min(fillPct, lowPct));
+            setW('resBarLowFill', latched ? 0 : Math.min(fillPct, lowPct));
             setW('resBarAlarm', alarmPct);
-            setW('resBarAlarmFill', Math.min(fillPct, alarmPct));
-            setW('resBarFill', fillPct);
+            setW('resBarAlarmFill', latched ? alarmPct : Math.min(fillPct, alarmPct));
+            setW('resBarFill', latched ? 0 : fillPct);
 
             capEl.textContent = 'Capacity: ' + fmtL(d.res_capacity_ml) + ' / ' + d.res_capacity_portions + ' doses';
 
@@ -1716,6 +1697,30 @@ const char* DASHBOARD_HTML = R"rawliteral(
             setTextMarkEstimate(note, notes.join(' \u00b7 '));
         }
 
+        // Main status line: reservoir alarm, ATO error, pump running, or the
+        // aquarium water level (state_description from the algorithm)
+        function processText(d) {
+            if (d.reserve_empty) {
+                const action = d.res_reading ? 'refill, then Cycle Reset'
+                                             : 'refill, then Reservoir refilled';
+                switch (d.reserve_alarm) {
+                    case 2:  return 'Reservoir alarm: level sensor not reading, estimate at the alarm level \u2014 ' + action;
+                    case 3:  return 'Reservoir alarm: no level reading \u2014 check the level sensor';
+                    default: return 'Low water in the reservoir \u2014 ' + action;
+                }
+            }
+            if (d.system_error) return d.state_description || 'Error';
+            if (d.pump_active && d.cal_phase === 3)
+                return 'Pump running \u2014 calibration run ' + (d.cal_runs + 1) + ' / ' + d.cal_runs_total;
+            if (d.direct_pump_mode && (d.pump_active || d.manual_pause)) {
+                const total = d.manual_done + d.manual_left;
+                return d.manual_pause ? 'Manual dosing \u2014 pause ' + d.manual_done + ' / ' + total
+                                      : 'Pump running \u2014 manual portion ' + (d.manual_done + 1) + ' / ' + total;
+            }
+            if (d.pump_active && !/^Pump running/.test(d.state_description || '')) return 'Pump running';
+            return d.state_description || '\u2014';
+        }
+
         let lastStatus = null;
 
         // ============================================
@@ -1736,9 +1741,6 @@ const char* DASHBOARD_HTML = R"rawliteral(
                     const hasLowResWarning = !!data.reserve_low || !!data.reserve_no_reading;
                     updateReserveBar(data);
 
-                    // Badges
-                    updateSensorBadge("sensor1Badge", data.sensor_active);
-                    updatePumpBadge("pumpBadge", data.pump_active, data.pump_attempt || 0);
                     updateSystemBadge("systemBadge", data.system_error || hasReserveEmpty || !!data.no_topoff_alarm || !!data.hw_alarm,
                                       data.system_disabled, hasLowResWarning);
 
@@ -1747,7 +1749,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
                         (data.hw_alarm ? "HARDWARE FAULT: " + (data.hw_alarm_text || "?") +
                             " \u2014 check the I2C wiring, then Cycle Reset \u00b7 " : "") +
                         (data.no_topoff_alarm ? "NO TOP-OFF FOR 24 h \u2014 check the sump float, then Cycle Reset \u00b7 " : "") +
-                        (data.state_description || "IDLE - Waiting for sensors");
+                        processText(data);
 
                     // System toggle sync
                     if (typeof data.system_disabled !== 'undefined') {

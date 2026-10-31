@@ -719,8 +719,8 @@ void handleHealth(AsyncWebServerRequest *request) {
 
 // ===============================
 // ALGORITHM CONFIG HANDLER
-// GET  — zwraca bieżące 7 parametrów algorytmu
-// POST — zapisuje nowe wartości (form-encoded)
+// GET  — returns the current 7 algorithm parameters
+// POST — saves new values (form-encoded)
 // ===============================
 
 void handleAlgConfig(AsyncWebServerRequest* request) {

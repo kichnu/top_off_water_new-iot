@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Symulacja algorytmu EMA dla systemu ATO.
-Odzwierciedla logikę z water_algorithm.cpp / algorithm_config.h.
+EMA algorithm simulation for the ATO system.
+Mirrors the logic of water_algorithm.cpp / algorithm_config.h.
 
-Uruchomienie:
+Run:
     python3 docs/ema_simulation.py
 """
 
-# ---- Parametry (mirror algorithm_config.h defaults) ----
+# ---- Parameters (mirror algorithm_config.h defaults) ----
 EMA_ALPHA            = 0.20
 VOL_YELLOW_PCT       = 30
 VOL_RED_PCT          = 60
@@ -15,9 +15,9 @@ RATE_YELLOW_PCT      = 40
 RATE_RED_PCT         = 80
 MIN_BOOTSTRAP        = 5
 
-# ---- rapidRefillCount — zamrożenie EMA podczas serii szybkich dolewek ----
-# Jeśli interval < EMA_int * RAPID_REFILL_RATIO → dolewka uznana za "rapid"
-# Po RAPID_REFILL_TRIGGER kolejnych rapid → EMA_rate i EMA_int zamrożone
+# ---- rapidRefillCount — EMA freeze during a series of quick top-offs ----
+# If interval < EMA_int * RAPID_REFILL_RATIO → the top-off counts as "rapid"
+# After RAPID_REFILL_TRIGGER consecutive rapid ones → EMA_rate and EMA_int frozen
 RAPID_REFILL_RATIO   = 0.30
 RAPID_REFILL_TRIGGER = 1
 
@@ -46,11 +46,11 @@ def alert_level(dev_vol, dev_rate, bootstrap_count):
 
 def run_simulation(events, alpha=EMA_ALPHA, label=""):
     """
-    events: lista krotek (volume_ml, interval_s)
-    Zwraca listę wyników rekordów.
+    events: list of tuples (volume_ml, interval_s)
+    Returns a list of record results.
     """
     print(f"\n{'='*80}")
-    print(f"SYMULACJA: {label}  alpha={alpha}  "
+    print(f"SIMULATION: {label}  alpha={alpha}  "
           f"rapid_ratio={RAPID_REFILL_RATIO}  rapid_trigger={RAPID_REFILL_TRIGGER}")
     print(f"{'='*80}")
     header = (f"{'#':>3}  {'vol[ml]':>8}  {'int[h]':>7}  {'rate[ml/h]':>11}  "
@@ -70,7 +70,7 @@ def run_simulation(events, alpha=EMA_ALPHA, label=""):
     for i, (vol, interval_s) in enumerate(events, 1):
         rate = (vol / interval_s * 3600) if interval_s > 0 else 0.0
 
-        # Wykryj rapid refill względem aktualnego EMA_int
+        # Detect a rapid refill against the current EMA_int
         is_rapid = (bootstrap > 0 and ema_int > 0
                     and interval_s < ema_int * RAPID_REFILL_RATIO)
         if is_rapid:
@@ -78,7 +78,7 @@ def run_simulation(events, alpha=EMA_ALPHA, label=""):
         else:
             rapid_refill_count = 0
 
-        # Zamrożenie EMA_rate i EMA_int gdy za dużo kolejnych rapid
+        # Freeze EMA_rate and EMA_int after too many consecutive rapid ones
         freeze_ema = is_rapid and (rapid_refill_count >= RAPID_REFILL_TRIGGER)
 
         if bootstrap == 0:
@@ -97,7 +97,7 @@ def run_simulation(events, alpha=EMA_ALPHA, label=""):
         dr = dev_pct(rate, ema_rate, bootstrap)
         al = alert_level(dv, dr, bootstrap)
 
-        ALERT_STR = ["   OK", " ŻÓŁT", "  CZE"]
+        ALERT_STR = ["   OK", "  YEL", "  RED"]
         alert_s = ALERT_STR[al] if al < 3 else "?????"
         frz_s   = " TAK" if freeze_ema else "  --"
 
@@ -115,13 +115,13 @@ def run_simulation(events, alpha=EMA_ALPHA, label=""):
     return records
 
 
-# Parametry sekwencji testowej
-DOSE_ML = 200           # objętość dolewki (stała dla całej sekwencji)
-NORMAL_INTERVAL = 7200  # odstęp [s] w normalnych warunkach
-STABLE_PREFIX = 3       # liczba normalnych dolewek przed zakłóceniami
-STABLE_SUFFIX = 15      # liczba normalnych dolewek po zakłóceniach
+# Test sequence parameters
+DOSE_ML = 200           # top-off volume (fixed for the whole sequence)
+NORMAL_INTERVAL = 7200  # interval [s] in normal conditions
+STABLE_PREFIX = 3       # number of normal top-offs before the disturbances
+STABLE_SUFFIX = 15      # number of normal top-offs after the disturbances
 
-# Serie zakłóceń — każda lista to osobna tabela wynikowa
+# Disturbance series — each list is a separate result table
 disturbance_intervals = [
 # first set
     [300],
@@ -158,8 +158,8 @@ if __name__ == "__main__":
         alpha_test_events = make_test_events(disturbance)
 
         print(f"\n{'='*80}")
-        print(f"ZAKŁÓCENIA: {disturbance}  ({len(disturbance)} dolewek)")
-        print(f"  events: {STABLE_PREFIX}× normal + {len(disturbance)}× zakłócenie + {STABLE_SUFFIX}× normal")
+        print(f"DISTURBANCES: {disturbance}  ({len(disturbance)} top-offs)")
+        print(f"  events: {STABLE_PREFIX}× normal + {len(disturbance)}× disturbance + {STABLE_SUFFIX}× normal")
         print(f"  RAPID_REFILL_RATIO={RAPID_REFILL_RATIO}  RAPID_REFILL_TRIGGER={RAPID_REFILL_TRIGGER}")
         print(f"{'='*80}")
 
@@ -167,9 +167,9 @@ if __name__ == "__main__":
             r = run_simulation(alpha_test_events, alpha=a, label=f"alpha={a}")
             first_alert = next((rec for rec in r if rec["alert"] > 0), None)
             if first_alert:
-                print(f"  → alpha={a}: pierwszy alert przy dolewce #{first_alert['i']} "
+                print(f"  → alpha={a}: first alert at top-off #{first_alert['i']} "
                       f"(dev_rate={first_alert['dev_rate']:+d}%)")
             else:
-                print(f"  → alpha={a}: brak alertów")
+                print(f"  → alpha={a}: no alerts")
 
         print()

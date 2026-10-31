@@ -13,7 +13,7 @@ void logInfo(const char* format, ...);
 void logWarning(const char* format, ...);
 void logError(const char* format, ...);
 
-// Warunkowe makra logowania - sprawdzają flagę konfiguracyjną
+// Conditional logging macros - check the configuration flag
 #if ENABLE_FULL_LOGGING
     #define LOG_INFO(format, ...) logInfo("[INFO] " format, ##__VA_ARGS__)
     #define LOG_WARNING(format, ...) logWarning("[WARN] " format, ##__VA_ARGS__)
@@ -24,7 +24,7 @@ void logError(const char* format, ...);
     #define LOG_ERROR(format, ...) do {} while(0)
 #endif
 
-// Zawsze dostępne makra dla krytycznych błędów
+// Always-available macros for critical errors
 #if ENABLE_SERIAL_DEBUG
     #define DEBUG_PRINT(x) Serial.print(x)
     #define DEBUG_PRINTLN(x) Serial.println(x)

@@ -7,15 +7,15 @@
 #include "driver/gpio.h"
 
 // ============================================================
-// Stan wewnętrzny
+// Internal state
 // ============================================================
 static SensorPhase currentPhase  = PHASE_IDLE;
-static uint32_t    phaseStartMs  = 0;   // millis() startu bieżącej fazy
-static uint32_t    lastCheckMs   = 0;   // millis() ostatniego próbkowania
-static uint8_t     debounceCount = 0;   // licznik kolejnych LOW
+static uint32_t    phaseStartMs  = 0;   // millis() at the start of the current phase
+static uint32_t    lastCheckMs   = 0;   // millis() of the last sample
+static uint8_t     debounceCount = 0;   // consecutive LOW counter
 
 // ============================================================
-// Inicjalizacja
+// Init
 // ============================================================
 void initWaterSensor() {
     // gpio_reset_pin() clears any peripheral allocation (ADC, IO matrix) before INPUT_PULLUP
@@ -37,14 +37,14 @@ void initWaterSensor() {
 }
 
 // ============================================================
-// Surowy odczyt pinu
+// Raw pin read
 // ============================================================
 bool readWaterSensor() {
     return digitalRead(WATER_SENSOR_PIN) == LOW;
 }
 
 // ============================================================
-// Reset procesu — powrót do IDLE
+// Process reset — back to IDLE
 // ============================================================
 void resetSensorProcess() {
     currentPhase  = PHASE_IDLE;
@@ -55,12 +55,12 @@ void resetSensorProcess() {
 }
 
 // ============================================================
-// Główna logika — wywoływana z loop()
+// Main logic — called from loop()
 // ============================================================
 void updateWaterSensor() {
     if (isSystemDisabled()) return;
 
-    // Nie przetwarzaj gdy algorytm pompuje, loguje lub jest w błędzie
+    // Do nothing while the algorithm pumps, logs or is in error
     AlgorithmState algState = waterAlgorithm.getState();
     if (algState == STATE_PUMPING  ||
         algState == STATE_LOGGING  ||
@@ -70,7 +70,7 @@ void updateWaterSensor() {
 
     uint32_t now = millis();
 
-    // Odstęp między próbkowaniami
+    // Interval between samples
     if (now - lastCheckMs < (uint32_t)DEBOUNCE_INTERVAL_MS) {
         return;
     }
@@ -81,7 +81,7 @@ void updateWaterSensor() {
     switch (currentPhase) {
 
         // ======================================================
-        // PHASE_IDLE — czekamy na pierwsze LOW
+        // PHASE_IDLE — waiting for the first LOW
         // ======================================================
         case PHASE_IDLE:
             if (sensorLow) {
@@ -95,7 +95,7 @@ void updateWaterSensor() {
             break;
 
         // ======================================================
-        // PHASE_DEBOUNCING — liczymy kolejne LOW
+        // PHASE_DEBOUNCING — counting consecutive LOW samples
         // ======================================================
         case PHASE_DEBOUNCING:
             if (sensorLow) {
@@ -106,10 +106,10 @@ void updateWaterSensor() {
                     LOG_INFO("");
                     LOG_INFO("SENSOR: Debounce complete — triggering algorithm");
                     waterAlgorithm.onDebounceComplete();
-                    // Algorytm odpowiada za reset procesu przez resetSensorProcess()
+                    // The algorithm resets the process via resetSensorProcess()
                 }
             } else {
-                // HIGH — reset licznika, wróć do IDLE
+                // HIGH — reset the counter, back to IDLE
                 if (debounceCount > 0) {
                     LOG_INFO("SENSOR: HIGH — counter reset (was %d/%d)",
                              debounceCount, DEBOUNCE_COUNTER);
@@ -123,7 +123,7 @@ void updateWaterSensor() {
 }
 
 // ============================================================
-// Gettery stanu
+// State getters
 // ============================================================
 SensorPhase getSensorPhase() {
     return currentPhase;

@@ -4,8 +4,8 @@
 #define WEB_HANDLERS_H
 
 #include <ESPAsyncWebServer.h>
-#include "../hardware/water_sensors.h"    // dla readWaterSensor1/2()
-#include "../algorithm/water_algorithm.h" // dla waterAlgorithm
+#include "../hardware/water_sensors.h"    // for readWaterSensor1/2()
+#include "../algorithm/water_algorithm.h" // for waterAlgorithm
 
 // Page handlers
 void handleDashboard(AsyncWebServerRequest *request);

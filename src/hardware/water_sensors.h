@@ -4,12 +4,12 @@
 #include <Arduino.h>
 
 // ============================================================
-// Czujnik pływakowy ATO (WATER_SENSOR_PIN).
-// Sprzętowo: dwa pływaki równolegle na jednym GPIO — redundancja sprzętowa.
-// Logika: LOW = woda poniżej poziomu.
+// ATO float sensor (WATER_SENSOR_PIN).
+// Hardware: two floats in parallel on one GPIO — hardware redundancy.
+// Logic: LOW = water below the level.
 //
-// Debouncing: próbkowanie co DEBOUNCE_INTERVAL_MS,
-//             wymagane DEBOUNCE_COUNTER kolejnych LOW.
+// Debouncing: a sample every DEBOUNCE_INTERVAL_MS,
+//             DEBOUNCE_COUNTER consecutive LOW samples required.
 // ============================================================
 
 enum SensorPhase {
@@ -17,18 +17,18 @@ enum SensorPhase {
     PHASE_DEBOUNCING
 };
 
-// ============== INICJALIZACJA I AKTUALIZACJA ==============
+// ============== INIT AND UPDATE ==============
 void initWaterSensor();
-void updateWaterSensor();      // Wywołaj z loop()
+void updateWaterSensor();      // Call from loop()
 
-// ============== ODCZYT ==============
-bool readWaterSensor();        // Surowy odczyt GPIO (true = LOW = woda poniżej poziomu)
-void resetSensorProcess();     // Powrót do PHASE_IDLE
+// ============== READ ==============
+bool readWaterSensor();        // Raw GPIO read (true = LOW = water below the level)
+void resetSensorProcess();     // Back to PHASE_IDLE
 
-// ============== GETTERY STANU (dla UI / diagnostyki) ==============
+// ============== STATE GETTERS (UI / diagnostics) ==============
 SensorPhase getSensorPhase();
 const char* getSensorPhaseString();
-uint8_t     getDebounceCounter();    // Bieżąca liczba potwierdzonych LOW
-uint32_t    getPhaseElapsedMs();     // ms od startu bieżącej fazy
+uint8_t     getDebounceCounter();    // Current number of confirmed LOW samples
+uint32_t    getPhaseElapsedMs();     // ms since the current phase started
 
 #endif // WATER_SENSORS_H

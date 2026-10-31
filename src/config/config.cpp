@@ -11,7 +11,7 @@ const char* WIFI_PASSWORD = "SETUP_REQUIRED";
 
 const char* ADMIN_PASSWORD_HASH = nullptr;  // ✅ Force FRAM setup!
 
-// Trusted proxy IP — NIE w ALLOWED_IPS[] (oddzielna sciezka auto-auth)
+// Trusted proxy IP — NOT in ALLOWED_IPS[] (separate auto-auth path)
 const IPAddress TRUSTED_PROXY_IP(10, 99, 0, 1);
 
 const IPAddress ALLOWED_IPS[] = {
@@ -39,7 +39,7 @@ PumpSettings currentPumpSettings;
 // ================= FRAM Storage Functions =================
 
 void initNVS() {
-    // Nazwa pozostaje dla kompatybilności, ale używamy FRAM
+    // The name stays for compatibility, but FRAM is used
     LOG_INFO("Initializing storage (FRAM)...");
     if (initFRAM()) {
         LOG_INFO("Storage system ready (FRAM)");

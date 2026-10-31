@@ -17,7 +17,7 @@
 WaterAlgorithm waterAlgorithm;
 
 // ============================================================
-// Konstruktor
+// Constructor
 // ============================================================
 WaterAlgorithm::WaterAlgorithm() {
     currentState     = STATE_IDLE;
@@ -62,7 +62,7 @@ WaterAlgorithm::WaterAlgorithm() {
 }
 
 // ============================================================
-// initFromFRAM — wywołaj z setup() po initFRAM()
+// initFromFRAM — call from setup() after initFRAM()
 // ============================================================
 void WaterAlgorithm::initFromFRAM() {
     TopOffConfig framCfg;
@@ -82,7 +82,7 @@ void WaterAlgorithm::initFromFRAM() {
 
         loadEmaFromFRAM();
 
-        // Seed EMA z initial_ema jeśli brak danych historycznych
+        // Seed the EMA from initial_ema when there is no history
         if (ema.ema_rate_ml_h < 0.01f && config.initial_ema > 0.01f) {
             ema.ema_rate_ml_h = config.initial_ema;
             LOG_INFO("WaterAlgorithm: EMA seeded from initial_ema=%.2f", config.initial_ema);
@@ -105,7 +105,7 @@ void WaterAlgorithm::initFromFRAM() {
         clearTopOffRingBuffer();
         framBusy = false;
 
-        // Seed EMA z default initial_ema
+        // Seed the EMA from the default initial_ema
         if (config.initial_ema > 0.01f) {
             ema.ema_rate_ml_h = config.initial_ema;
         }
@@ -129,10 +129,10 @@ void WaterAlgorithm::initFromFRAM() {
 }
 
 // ============================================================
-// FRAM — ładowanie i zapis
+// FRAM — load and save
 // ============================================================
 void WaterAlgorithm::loadConfigFromFRAM() {
-    // Logika przeniesiona do initFromFRAM()
+    // Logic moved to initFromFRAM()
 }
 
 void WaterAlgorithm::loadEmaFromFRAM() {
@@ -153,7 +153,7 @@ void WaterAlgorithm::saveEmaToFRAM() {
 }
 
 // ============================================================
-// GŁÓWNA PĘTLA
+// MAIN LOOP
 // ============================================================
 void WaterAlgorithm::update() {
     checkResetButton();
@@ -202,7 +202,7 @@ void WaterAlgorithm::update() {
 }
 
 // ============================================================
-// CALLBACKI Z water_sensors
+// CALLBACKS FROM water_sensors
 // ============================================================
 
 void WaterAlgorithm::onDebounceStart() {
@@ -276,7 +276,7 @@ void WaterAlgorithm::startAutoPump() {
 }
 
 // ============================================================
-// FINALIZACJA CYKLU
+// CYCLE FINALIZATION
 // ============================================================
 
 void WaterAlgorithm::finishPumpCycle() {
@@ -366,7 +366,7 @@ void WaterAlgorithm::finishPumpCycle() {
     record.interval_s     = intervalS;
     record.rate_ml_h      = rateMlH;
     record.cycle_num      = totalCycleCount++;
-    record.dev_rate_sigma = 0;  // nieużywane
+    record.dev_rate_sigma = 0;  // unused
     record.alert_level    = alertLevel;
     record.hour_of_day    = hourOfDay;
     record.flags          = 0;
@@ -416,7 +416,7 @@ void WaterAlgorithm::updateEMA(uint32_t intervalS, float rateMlH) {
     const float p1    = ALARM_P1;
     const float p2    = ALARM_P2;
 
-    // Seed EMA przy pierwszej dolewce z rate
+    // Seed the EMA from the rate on the first top-off
     if (ema.ema_rate_ml_h < 0.01f) {
         ema.ema_rate_ml_h  = rateMlH;
         ema.ema_interval_s = (float)intervalS;
@@ -425,7 +425,7 @@ void WaterAlgorithm::updateEMA(uint32_t intervalS, float rateMlH) {
         return;
     }
 
-    // Odchylenie względne
+    // Relative deviation
     float d = (ema.ema_rate_ml_h > 0.01f)
               ? ((rateMlH - ema.ema_rate_ml_h) / ema.ema_rate_ml_h)
               : 0.0f;
@@ -440,7 +440,7 @@ void WaterAlgorithm::updateEMA(uint32_t intervalS, float rateMlH) {
         ema.alarm_score = fmaxf(0.0f, ema.alarm_score * (1.0f - factor));
     }
 
-    // Clamp rate przed aktualizacją EMA
+    // Clamp the rate before the EMA update
     float lo      = ema.ema_rate_ml_h * (1.0f - clamp);
     float hi      = ema.ema_rate_ml_h * (1.0f + clamp);
     float clamped = fminf(fmaxf(rateMlH, lo), hi);
@@ -490,27 +490,27 @@ uint16_t WaterAlgorithm::scanRolling24h() const {
     uint32_t cutoffTs = (nowTs > windowS) ? (nowTs - windowS) : 0;
     if (manualResetTs > cutoffTs) cutoffTs = manualResetTs;
 
-    uint32_t total = 0;   // uint32_t — chroni przed przepełnieniem uint16_t przy błędnych rekordach
+    uint32_t total = 0;   // uint32_t — no uint16_t overflow on corrupt records
     TopOffRecord records[TOPOFF_HISTORY_SIZE];
     uint16_t count = loadTopOffHistory(records, TOPOFF_HISTORY_SIZE);
 
     uint16_t inWindow = 0;
     for (uint16_t i = 0; i < count; i++) {
         if (records[i].timestamp >= cutoffTs) {
-            // Walidacja dose_ml_record: musi być w sensownym zakresie.
-            // Stare rekordy (sprzed 02cefe4) miały tu _pad[2] — losowe bajty stosu.
+            // Validate dose_ml_record: it must be in a sane range.
+            // Old records (before 02cefe4) had _pad[2] here — random stack bytes.
             uint16_t d;
             if (records[i].dose_ml_record >= 50 && records[i].dose_ml_record <= 5000) {
                 d = records[i].dose_ml_record;
             } else {
-                d = config.dose_ml;   // fallback: 0 lub śmieć → użyj aktualnej konfiguracji
+                d = config.dose_ml;   // fallback: 0 or garbage → use the current configuration
             }
             total += d;
             inWindow++;
         }
     }
 
-    // Ogranicz do uint16_t — w razie masowej korupcji FRAM nie zwróci absurdalnej liczby
+    // Cap to uint16_t — massive FRAM corruption cannot return an absurd number
     uint16_t result = (total > 65000u) ? 65000u : (uint16_t)total;
 
     LOG_INFO("scanRolling24h: nowTs=%lu cutoff=%lu total=%d records, %d in window → %u ml",
@@ -520,7 +520,7 @@ uint16_t WaterAlgorithm::scanRolling24h() const {
 }
 
 // ============================================================
-// Konfiguracja
+// Configuration
 // ============================================================
 
 void WaterAlgorithm::setConfig(const TopOffConfig& cfg) {

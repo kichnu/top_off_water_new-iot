@@ -6,11 +6,11 @@
 #include <IPAddress.h>
 
 // ================= DEBUG & LOGGING CONFIG =================
-// Ustaw na false jeśli masz problemy z stabilnością
+// Set to false if you have stability problems
 #define ENABLE_FULL_LOGGING true
 #define ENABLE_SERIAL_DEBUG true
 
-// TYLKO DEKLARACJE (extern) - NIE DEFINICJE!
+// DECLARATIONS ONLY (extern) - NO DEFINITIONS!
 extern const char* WIFI_SSID;
 extern const char* WIFI_PASSWORD;
 extern const char* ADMIN_PASSWORD_HASH;
@@ -45,7 +45,7 @@ extern const unsigned long PUMP_AUTO_ENABLE_MS;
 
 // ATO calibration safety timeout — pump stops automatically after 1h if user forgets
 
-// Stałe mogą być tutaj
+// Constants can go here
 const unsigned long SESSION_TIMEOUT_MS = 1800000; 
 const unsigned long RATE_LIMIT_WINDOW_MS = 1000;
 const int MAX_REQUESTS_PER_SECOND = 5;

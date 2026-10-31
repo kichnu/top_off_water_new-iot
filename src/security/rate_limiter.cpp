@@ -66,7 +66,7 @@ bool isRateLimited(IPAddress ip) {
 }
 
 void recordRequest(IPAddress ip) {
-        // ✅ CACHE dla IP string conversion
+        // ✅ CACHE for the IP string conversion
     uint32_t ipUint = ip;
  
     String ipStr = ip.toString();
@@ -88,11 +88,11 @@ void recordRequest(IPAddress ip) {
 
     RateLimitData& data = rateLimitData[ipStr];
     
-    // 🔍 DEBUGGING - rozmiar PRZED czyszczeniem
+    // 🔍 DEBUGGING - size BEFORE cleanup
     size_t sizeBefore = data.requestTimes.size();
     size_t totalIPsBefore = rateLimitData.size();
     
-    // ✅ CZYŚĆ STARE przed dodaniem nowego
+    // ✅ CLEAN OLD ones before adding the new one
     data.requestTimes.erase(
         std::remove_if(data.requestTimes.begin(), data.requestTimes.end(),
                       [now](unsigned long time) { 
@@ -103,7 +103,7 @@ void recordRequest(IPAddress ip) {
     size_t sizeAfterCleanup = data.requestTimes.size();
     size_t cleaned = sizeBefore - sizeAfterCleanup;
     
-    // ✅ HARD LIMIT - maksymalnie 20 timestampów
+    // ✅ HARD LIMIT - at most 20 timestamps
     size_t hardLimitCleaned = 0;
     if (data.requestTimes.size() >= 20) {
         hardLimitCleaned = 10;
@@ -114,10 +114,10 @@ void recordRequest(IPAddress ip) {
     data.requestTimes.push_back(now);
     data.lastRequest = now;
     
-    // 🔍 DEBUGGING - rozmiar PO wszystkich operacjach
+    // 🔍 DEBUGGING - size AFTER all operations
     size_t sizeFinal = data.requestTimes.size();
     
-    // 🔍 LOG co 50 requestów LUB gdy było czyszczenie
+    // 🔍 LOG every 50 requests OR after a cleanup
     static int requestCounter = 0;
     requestCounter++;
 }

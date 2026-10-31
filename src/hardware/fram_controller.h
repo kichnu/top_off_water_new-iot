@@ -12,8 +12,8 @@
 #include "fram_constants.h" 
 
 // ===============================
-// LEGACY: PumpCycle — zachowany dla zgodności z istniejącym FRAM layout
-// Nowy kod używa TopOffRecord (patrz algorithm_config.h)
+// LEGACY: PumpCycle — kept for compatibility with the existing FRAM layout
+// New code uses TopOffRecord (see algorithm_config.h)
 // ===============================
 struct PumpCycle {
     uint32_t timestamp;
@@ -26,7 +26,7 @@ struct PumpCycle {
     uint8_t  sensor_results;
     uint8_t  error_code;
     uint16_t volume_dose;
-    uint8_t  _pad;            // wyrównanie do 28 bajtów
+    uint8_t  _pad;            // padding to 28 bytes
 };
 
 // ===============================
@@ -52,12 +52,12 @@ struct PumpCycle {
 #define FRAM_ADDR_GAP1_SUM     (FRAM_ESP32_BASE + 0x0C)  // 2 bytes - gap1_fail_sum
 #define FRAM_ADDR_GAP2_SUM     (FRAM_ESP32_BASE + 0x0E)  // 2 bytes - gap2_fail_sum  
 #define FRAM_ADDR_WATER_SUM    (FRAM_ESP32_BASE + 0x10)  // 2 bytes - water_fail_sum
-#define FRAM_ADDR_LAST_RESET   (FRAM_ESP32_BASE + 0x12)  // 4 bytes - timestamp ostatniego resetu
-#define FRAM_ADDR_STATS_CHKSUM (FRAM_ESP32_BASE + 0x16)  // 2 bytes - checksum statystyk
+#define FRAM_ADDR_LAST_RESET   (FRAM_ESP32_BASE + 0x12)  // 4 bytes - timestamp of the last reset
+#define FRAM_ADDR_STATS_CHKSUM (FRAM_ESP32_BASE + 0x16)  // 2 bytes - stats checksum
 
 // 🆕 NEW: Daily volume tracking
 #define FRAM_ADDR_DAILY_VOLUME    (FRAM_ESP32_BASE + 0x18)  // 2 bytes - uint16_t
-#define FRAM_ADDR_LAST_RESET_UTC  (FRAM_ESP32_BASE + 0x1A)  // 4 bytes - uint32_t (było 12)
+#define FRAM_ADDR_LAST_RESET_UTC  (FRAM_ESP32_BASE + 0x1A)  // 4 bytes - uint32_t (was 12)
 #define FRAM_ADDR_DAILY_CHECKSUM  (FRAM_ESP32_BASE + 0x1E)  // 2 bytes - checksum
 \
 // 0x0520–0x0529: former reserve volume (configured ml + current ml + checksum) — unused
@@ -66,25 +66,25 @@ struct PumpCycle {
 #define FRAM_ADDR_FILL_WATER_MAX     (FRAM_ESP32_BASE + 0x2A)  // 2 bytes - uint16_t (ml)
 #define FRAM_ADDR_FILL_MAX_CHKSUM    (FRAM_ESP32_BASE + 0x2C)  // 2 bytes - checksum
 
-// ESP32 cycle management (LEGACY — zastąpione przez TopOffRecord ring buffer poniżej)
-#define FRAM_ADDR_CYCLE_COUNT  (FRAM_ESP32_BASE + 0x30)  // 2 bytes - liczba zapisanych cykli
+// ESP32 cycle management (LEGACY — replaced by the TopOffRecord ring buffer below)
+#define FRAM_ADDR_CYCLE_COUNT  (FRAM_ESP32_BASE + 0x30)  // 2 bytes - number of stored cycles
 #define FRAM_ADDR_CYCLE_INDEX  (FRAM_ESP32_BASE + 0x32)  // 2 bytes - current write index (circular buffer)
-#define FRAM_ADDR_CYCLE_DATA   (FRAM_ESP32_BASE + 0x100) // Start danych cykli (legacy)
+#define FRAM_ADDR_CYCLE_DATA   (FRAM_ESP32_BASE + 0x100) // Start of cycle data (legacy)
 
-#define FRAM_MAX_CYCLES        30      // Legacy — nie używane w nowym kodzie
-#define FRAM_CYCLE_SIZE        28      // Legacy — nie używane w nowym kodzie
+#define FRAM_MAX_CYCLES        30      // Legacy — not used in new code
+#define FRAM_CYCLE_SIZE        28      // Legacy — not used in new code
 
 // ===============================
 // 🆕 TOP-OFF ALGORITHM SECTIONS
 // ===============================
 
-// Konfiguracja algorytmu (TopOffConfig) — 40 bajtów
-// UWAGA: sizeof(TopOffConfig) == 40 (verified by static_assert)
-//        Checksum MUSI być na adresie >= FRAM_ADDR_TOPOFF_CONFIG + 40 = 0x0588
+// Algorithm configuration (TopOffConfig) — 40 bytes
+// NOTE: sizeof(TopOffConfig) == 40 (verified by static_assert)
+//       The checksum MUST be at an address >= FRAM_ADDR_TOPOFF_CONFIG + 40 = 0x0588
 #define FRAM_ADDR_TOPOFF_CONFIG     0x0560   // 40 bytes — TopOffConfig struct (0x0560–0x0587)
-#define FRAM_ADDR_TOPOFF_CFG_CHKSUM 0x0588   // 2 bytes — checksum konfiguracji
+#define FRAM_ADDR_TOPOFF_CFG_CHKSUM 0x0588   // 2 bytes — configuration checksum
 
-// Blok EMA (EmaBlock) — 16 bajtów
+// EMA block (EmaBlock) — 16 bytes
 #define FRAM_ADDR_EMA_BLOCK         0x0590   // 16 bytes — EmaBlock struct (0x0590–0x059F)
 #define FRAM_ADDR_EMA_CHKSUM        0x05A0   // 2 bytes — checksum EMA
 
@@ -101,12 +101,12 @@ struct PumpCycle {
 // 0x05E4–0x05FE: free
 #define FRAM_ADDR_HEALTH_SCRATCH    0x05FF   // 1 byte — hw_health write/read-back check
 
-// Ring buffer rekordów dolewek (TopOffRecord, 20 bajtów każdy)
-#define TOPOFF_HISTORY_SIZE         60       // Maksymalnie 60 rekordów (60×20=1200 bajtów)
-#define FRAM_TOPOFF_RECORD_SIZE     20       // sizeof(TopOffRecord) — weryfikowane static_assert
-#define FRAM_ADDR_TOPOFF_COUNT      0x0600   // 2 bytes — liczba zapisanych rekordów
+// Top-off record ring buffer (TopOffRecord, 20 bytes each)
+#define TOPOFF_HISTORY_SIZE         60       // At most 60 records (60×20=1200 bytes)
+#define FRAM_TOPOFF_RECORD_SIZE     20       // sizeof(TopOffRecord) — verified by static_assert
+#define FRAM_ADDR_TOPOFF_COUNT      0x0600   // 2 bytes — number of stored records
 #define FRAM_ADDR_TOPOFF_WPTR       0x0602   // 2 bytes — write pointer (ring buffer)
-#define FRAM_ADDR_TOPOFF_DATA       0x0610   // Start danych: 60 × 20 = 1200 bajtów → kończy się 0x0AC0
+#define FRAM_ADDR_TOPOFF_DATA       0x0610   // Data start: 60 × 20 = 1200 bytes → ends at 0x0AC0
 
 // Level sensor event log (diagnostics, see level_event_log.h): 16 B header + 48 × 128 B → ends 0x2910
 // (0x1000 is the scratch address of testFRAM())
@@ -143,7 +143,7 @@ uint16_t getCycleCountFromFRAM();
 // FRAM busy flag - prevents concurrent I2C access during writes
 extern volatile bool framBusy;
 
-// Struktura statystyk błędów
+// Error statistics struct
 struct ErrorStats {
     uint16_t gap1_fail_sum;
     uint16_t gap2_fail_sum;
@@ -151,7 +151,7 @@ struct ErrorStats {
     uint32_t last_reset_timestamp;
 };
 
-// Funkcje obsługi statystyk błędów
+// Error statistics functions
 bool loadErrorStatsFromFRAM(ErrorStats& stats);
 bool saveErrorStatsToFRAM(const ErrorStats& stats);
 bool resetErrorStatsInFRAM();
@@ -175,19 +175,19 @@ struct ReservoirConfig;
 struct ReserveTrack;
 struct AlgErrorState;
 
-// Ring buffer rekordów dolewek
+// Top-off record ring buffer
 bool saveTopOffRecord(const TopOffRecord& record);
 uint16_t loadTopOffHistory(TopOffRecord* buf, uint16_t maxCount);
 bool loadLastTopOffRecord(TopOffRecord& record);
 uint16_t getTopOffRecordCount();
-bool clearTopOffRingBuffer();      // Czyści ring buffer i EMA
-bool isTopOffRingBufferValid();    // false gdy count > TOPOFF_HISTORY_SIZE (legacy/corrupt data)
+bool clearTopOffRingBuffer();      // Clears the ring buffer and the EMA
+bool isTopOffRingBufferValid();    // false when count > TOPOFF_HISTORY_SIZE (legacy/corrupt data)
 
 // EMA block
 bool saveEmaBlockToFRAM(const EmaBlock& ema);
 bool loadEmaBlockFromFRAM(EmaBlock& ema);
 
-// Konfiguracja algorytmu
+// Algorithm configuration
 bool saveTopOffConfigToFRAM(const TopOffConfig& cfg);
 bool loadTopOffConfigFromFRAM(TopOffConfig& cfg);
 

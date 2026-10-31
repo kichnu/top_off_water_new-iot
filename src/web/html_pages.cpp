@@ -521,7 +521,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
         }
 
-        /* Stan OFF dla przycisków bistabilnych */
+        /* OFF state of the toggle buttons */
         .btn-off {
             background: var(--bg-input);
             color: var(--text-secondary);
@@ -579,7 +579,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             gap: 12px;
         }
 
-        /* Single Dose: pierwsza kolumna na desktopie (ostatnia w HTML → order:-1) */
+        /* Single Dose: first column on desktop (last in HTML → order:-1) */
         .stat-col-dose {
             order: -1;
         }
@@ -588,7 +588,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
             .stats-columns {
                 grid-template-columns: 1fr;
             }
-            /* Na mobile Single Dose wraca na koniec */
+            /* On mobile Single Dose goes back to the end */
             .stat-col-dose {
                 order: 3;
             }
@@ -1796,7 +1796,7 @@ const char* DASHBOARD_HTML = R"rawliteral(
 
         // ============================================
         // DAILY VOLUME + AVAILABLE WATER + DOSE DISPLAY
-        // Wszystkie dane z jednego endpointu: api/daily-volume
+        // All data from one endpoint: api/daily-volume
         // ============================================
         function loadDailyVolume() {
             secureFetch("api/daily-volume")

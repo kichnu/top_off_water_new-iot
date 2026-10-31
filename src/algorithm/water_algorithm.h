@@ -5,17 +5,17 @@
 #include "../hardware/fram_controller.h"
 
 // ============================================================
-// WaterAlgorithm — maszyna stanów sterująca pompą top-off.
+// WaterAlgorithm — state machine driving the top-off pump.
 //
-// Stany: IDLE → DEBOUNCING → PUMPING → LOGGING → IDLE
+// States: IDLE → DEBOUNCING → PUMPING → LOGGING → IDLE
 //                                     ↘ STATE_ERROR (reservoir / daily limit / red alert)
 //
-// Algorytm alarmu (score-based):
-//   Każda dolewka liczy odchylenie d = (rate - EMA) / EMA.
-//   Przy d > 0: alarm_score rośnie (P1 × log2(1+d) × 100).
-//   Przy d ≤ 0: alarm_score zanika (mnożnik P2).
-//   Strefy: score < zone_green → zielony, < zone_yellow → żółty, else → czerwony.
-//   Czerwona strefa → STATE_ERROR (pompa blokowana), alarm SOUND.
+// Alarm algorithm (score-based):
+//   Every top-off computes the deviation d = (rate - EMA) / EMA.
+//   d > 0: alarm_score grows (P1 × log2(1+d) × 100).
+//   d ≤ 0: alarm_score decays (multiplier P2).
+//   Zones: score < zone_green → green, < zone_yellow → yellow, else → red.
+//   Red zone → STATE_ERROR (pump blocked), alarm SOUND.
 //   A reset of an error with the score in the red zone disarms the anomaly
 //   alarm for ALARM_DISARM_S (24 h) or until the score drops below zone_yellow,
 //   whichever comes first. The error and the disarm time are kept in FRAM.
@@ -30,7 +30,7 @@ private:
     uint32_t stateStartMs;
     uint32_t pumpStartMs;
 
-    // ---- Tracking interwałów ----
+    // ---- Interval tracking ----
     uint32_t lastTopOffTimestamp;
     uint16_t totalCycleCount;
 
@@ -46,10 +46,10 @@ private:
     uint8_t  ramDoseCount;
     uint8_t  ramDoseNext;
 
-    // ---- Konfiguracja (FRAM lub defaults) ----
+    // ---- Configuration (FRAM or defaults) ----
     TopOffConfig config;
 
-    // ---- EMA + alarm score (persystowane w FRAM) ----
+    // ---- EMA + alarm score (persisted in FRAM) ----
     EmaBlock ema;
 
     // ---- Anomaly alarm disarm after a reset ----
@@ -66,14 +66,14 @@ private:
     bool     wdWasActive;
     bool     noTopOffAlarm;
 
-    // ---- Obsługa błędów ----
+    // ---- Error handling ----
     ErrorCode lastError;
 
-    // ---- Flagi stanu ----
+    // ---- State flags ----
     bool systemWasDisabled;
     bool cycleLogged;
 
-    // ---- Metody prywatne ----
+    // ---- Private methods ----
     void handleSystemDisable();
 
     void startAutoPump();
@@ -101,7 +101,7 @@ public:
     void initFromFRAM();
     void update();
 
-    // ---- Callbacki z water_sensors ----
+    // ---- Callbacks from water_sensors ----
     void onDebounceStart();
     void onDebounceComplete();
     void onDebounceReset();
@@ -117,14 +117,14 @@ public:
     uint32_t       getPumpElapsedMs()    const;
     uint16_t       getTotalCycleCount()  const { return totalCycleCount; }
 
-    // ---- Konfiguracja ----
+    // ---- Configuration ----
     const TopOffConfig& getConfig() const { return config; }
     void setConfig(const TopOffConfig& cfg);
 
-    // ---- EMA (tylko do odczytu dla API) ----
+    // ---- EMA (read-only, for the API) ----
     const EmaBlock& getEma() const { return ema; }
 
-    // ---- Alarm hystereza ----
+    // ---- Alarm hysteresis ----
     bool     isAlarmArmed()     const { return alarmArmed; }
     uint32_t getDisarmUntilTs() const { return disarmUntilTs; }
 
@@ -132,7 +132,7 @@ public:
     bool     isNoTopOffAlarm()  const { return noTopOffAlarm; }
     uint32_t getWatchdogRefTs() const { return wdRefTs; }
 
-    // ---- Reset / odzyskiwanie ----
+    // ---- Reset / recovery ----
     // The only reset (GUI and button): error cleared, pump stopped, reserve alarm
     // cleared when the level allows; false while logging a cycle
     bool resetSystem();

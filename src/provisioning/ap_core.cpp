@@ -119,7 +119,7 @@ void runProvisioningLoop() {
         // Small delay to prevent watchdog timeout
         delay(10);
         
-        // TODO ETAP 1: Web server request handling will be added here
+        // TODO STAGE 1: Web server request handling will be added here
         // The loop will continue until manual restart after configuration save
     }
 }

@@ -21,6 +21,9 @@
 #include "../hardware/level_sensor.h"
 #include "../hardware/level_event_log.h"
 #include "../config/reservoir_config.h"
+#include "../core/node_status.h"
+#include "../core/version.h"
+#include "../network/espnow_panel.h"
 
 void handleDashboard(AsyncWebServerRequest* request) {
     if (!checkAuthentication(request)) {
@@ -143,6 +146,20 @@ void handleStatus(AsyncWebServerRequest* request) {
     json["manual_done"]      = getManualPortionsDone();
     json["manual_pause"]     = isManualPause();
     json["system_error"] = (waterAlgorithm.getState() == STATE_ERROR);
+    json["error_code"]   = getErrorCode();     // ErrorCode: 0 none, 1 daily limit, 2 anomaly, 4 reservoir
+    {
+        uint8_t ns = getNodeStatus();
+        json["node_status"]      = ns;         // 0 OK, 1 warning, 2 alarm, 3 fault, 4 service
+        json["node_status_text"] = nodeStatusString(ns);
+        json["alarm_bits"]       = getAlarmBits();
+    }
+    json["fw_version"] = FW_VERSION;
+    {
+        EspNowPanelStats es = getEspNowPanelStats();
+        json["espnow_enabled"] = es.enabled;
+        json["espnow_tx_ok"]   = es.txOk;
+        json["espnow_tx_fail"] = es.txFail;
+    }
     
     // ============================================
     // SYSTEM DISABLE STATUS (NEW)

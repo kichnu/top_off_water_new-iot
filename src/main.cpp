@@ -11,6 +11,8 @@
 #include "hardware/water_sensors.h"
 #include "hardware/pump_controller.h"
 #include "network/wifi_manager.h"
+#include "network/espnow_panel.h"
+#include "core/version.h"
 #include "security/auth_manager.h"
 #include "security/session_manager.h"
 #include "security/rate_limiter.h"
@@ -184,6 +186,9 @@ void setup() {
     
     // Initialize web server
     initWebServer();
+
+    // ESP-NOW link to the touch panel (status broadcast) — needs Wi-Fi STA + password
+    if (credentials_loaded) initEspNowPanel();
     
     // Post-init diagnostics
     Serial.println();
@@ -327,6 +332,7 @@ void loop() {
         updateSessionManager();
         updateRateLimiter();
         updateWiFi();
+        updateEspNowPanel();
         lastUpdate = now;
     }
 

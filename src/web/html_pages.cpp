@@ -166,19 +166,6 @@ const char* LOGIN_HTML = R"rawliteral(
             border: 1px solid rgba(239, 68, 68, 0.3);
             color: var(--accent-red);
         }
-
-        .info {
-            margin-top: 24px;
-            padding: 16px;
-            background: var(--bg-input);
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .info strong {
-            color: var(--text-secondary);
-        }
     </style>
 </head>
 <body>
@@ -197,12 +184,6 @@ const char* LOGIN_HTML = R"rawliteral(
             <button type="submit" class="login-btn">Login</button>
         </form>
         <div id="error" class="alert error"></div>
-        <div class="info">
-            <strong>Security Features:</strong><br />
-            • Session-based authentication<br />
-            • Rate limiting & IP filtering<br />
-            • VPS event logging
-        </div>
     </div>
     <script>
         document.getElementById("loginForm").addEventListener("submit", function(e) {

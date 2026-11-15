@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_random.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include <mbedtls/md.h>
 #include <string.h>
 
@@ -12,6 +14,7 @@
 #include "../config/config.h"
 #include "../config/credentials_manager.h"
 #include "../core/logging.h"
+#include "../core/node_commands.h"
 #include "../core/node_status.h"
 #include "../core/version.h"
 #include "../hardware/hw_health.h"
@@ -35,6 +38,27 @@ static uint32_t s_txSeq = 0;
 static uint32_t s_cmdNonce = 0;
 static uint32_t s_txOk = 0;
 static uint32_t s_txFail = 0;
+static uint32_t s_rxCmd = 0;
+static uint32_t s_rxBad = 0;
+static uint32_t s_rxReplay = 0;
+
+// Received frames: the Wi-Fi task only copies them here, loop() handles them
+struct RxItem {
+    uint8_t mac[6];
+    uint8_t len;
+    uint8_t data[FRAME_MAX];
+};
+static QueueHandle_t s_rxQueue = nullptr;
+constexpr int RX_QUEUE_LEN = 4;
+
+// Sender (panel) replay window and the last executed command, answered again on repeats
+static uint8_t  s_peerMac[6];
+static bool     s_havePeer = false;
+static uint32_t s_peerBoot = 0;
+static uint32_t s_peerSeq  = 0;
+static bool     s_haveLastCmd = false;
+static uint8_t  s_lastCmdMac[6];
+static AckBody  s_lastAck;
 
 static StatusBody s_lastSent;          // fields that trigger an immediate status (see changeKey())
 static uint32_t   s_lastStatusMs = 0;
@@ -138,7 +162,144 @@ static void changeKey(StatusBody& b) {
 
 static void onSent(const uint8_t* mac, esp_now_send_status_t status) {
     (void)mac;
-    (void)status;   // broadcast: no MAC-level ACK, nothing to count
+    (void)status;   // ACK repeats are driven by the panel's retries, nothing to do here
+}
+
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+static void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+    const uint8_t* mac = info->src_addr;
+#else
+static void onRecv(const uint8_t* mac, const uint8_t* data, int len) {
+#endif
+    if (!s_rxQueue || len <= 0 || len > (int)FRAME_MAX) return;
+    RxItem it;
+    memcpy(it.mac, mac, 6);
+    it.len = (uint8_t)len;
+    memcpy(it.data, data, len);
+    xQueueSend(s_rxQueue, &it, 0);   // full queue: frame dropped, the panel repeats
+}
+
+static bool tagOk(const uint8_t* data, size_t len, const uint8_t* tag) {
+    uint8_t full[32];
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), s_key, sizeof(s_key), data, len, full);
+    uint8_t diff = 0;
+    for (size_t i = 0; i < TAG_LEN; i++) diff |= full[i] ^ tag[i];
+    return diff == 0;
+}
+
+static void ensurePeer(const uint8_t* mac) {
+    if (esp_now_is_peer_exist(mac)) return;
+    esp_now_peer_info_t info = {};
+    memcpy(info.peer_addr, mac, 6);
+    info.channel = 0;
+    info.ifidx = WIFI_IF_STA;
+    info.encrypt = false;
+    esp_now_add_peer(&info);
+}
+
+static const char* cmdName(uint8_t c) {
+    switch (c) {
+        case CMD_SET_MODE:        return "SET_MODE";
+        case CMD_PORTIONS:        return "PORTIONS";
+        case CMD_PUMP_STOP:       return "PUMP_STOP";
+        case CMD_ERROR_RESET:     return "ERROR_RESET";
+        case CMD_SET_DAILY_LIMIT: return "SET_DAILY_LIMIT";
+        default:                  return "?";
+    }
+}
+
+static AckResult execute(const CmdBody& c, uint16_t& value) {
+    value = 0;
+    switch (c.cmd) {
+        case CMD_SET_MODE: {
+            if (c.arg > 1) return ACK_BAD_CMD;
+            bool changed = false;
+            AckResult r = cmdSetMode(c.arg == 1, &changed);
+            value = isSystemDisabled() ? 0 : 1;
+            if (r == ACK_OK && changed)
+                LOG_INFO("System %s via panel", c.arg ? "ENABLED" : "DISABLED");
+            return r;
+        }
+        case CMD_PORTIONS: {
+            uint8_t accepted = 0;
+            AckResult r = cmdPortions(c.arg > 0xFF ? 0 : (uint8_t)c.arg, &accepted);
+            value = accepted;
+            return r;
+        }
+        case CMD_PUMP_STOP:   return cmdPumpStop();
+        case CMD_ERROR_RESET: return cmdErrorReset();
+        case CMD_SET_DAILY_LIMIT: return cmdSetDailyLimit(c.arg, &value);
+        default:              return ACK_BAD_CMD;
+    }
+}
+
+static void handleFrame(const RxItem& it) {
+    if (it.len < sizeof(FrameHdr) + TAG_LEN) {
+        s_rxBad++;
+        return;
+    }
+    size_t n = it.len - TAG_LEN;
+    FrameHdr h;
+    memcpy(&h, it.data, sizeof(h));
+    if (h.magic != FRAME_MAGIC || h.version != FRAME_VERSION) return;   // lamp frames — not ours
+    if (!tagOk(it.data, n, it.data + n)) {
+        s_rxBad++;
+        return;
+    }
+    if (h.type != FT_CMD) return;   // e.g. our own status echoed by nobody — only commands here
+    if (n - sizeof(h) < sizeof(CmdBody)) {
+        s_rxBad++;
+        return;
+    }
+    bool samePeer = s_havePeer && memcmp(s_peerMac, it.mac, 6) == 0;
+    if (samePeer && h.boot_id == s_peerBoot && h.seq <= s_peerSeq) {
+        s_rxReplay++;
+        return;
+    }
+    memcpy(s_peerMac, it.mac, 6);
+    s_havePeer = true;
+    s_peerBoot = h.boot_id;
+    s_peerSeq  = h.seq;
+
+    CmdBody c;
+    memcpy(&c, it.data + sizeof(h), sizeof(c));
+    ensurePeer(it.mac);
+
+    // Repeat of the last command (ACK lost): the same answer, nothing executed again
+    if (s_haveLastCmd && c.cmd_id == s_lastAck.cmd_id && memcmp(s_lastCmdMac, it.mac, 6) == 0) {
+        sendFrame(it.mac, FT_ACK, &s_lastAck, sizeof(s_lastAck));
+        return;
+    }
+
+    AckBody a = {};
+    a.cmd_id = c.cmd_id;
+    a.cmd    = c.cmd;
+    if (c.cmd_nonce != s_cmdNonce) {
+        s_rxReplay++;
+        a.cmd_nonce   = s_cmdNonce;
+        a.result      = ACK_STALE_NONCE;
+        a.alarms      = getAlarmBits();
+        a.manual_left = getManualPortionsLeft();
+        LOG_WARNING("Panel command %s rejected — stale nonce", cmdName(c.cmd));
+        sendFrame(it.mac, FT_ACK, &a, sizeof(a));
+        return;
+    }
+
+    uint16_t value = 0;
+    AckResult r = execute(c, value);
+    s_rxCmd++;
+    s_cmdNonce = esp_random();
+    a.cmd_nonce   = s_cmdNonce;
+    a.result      = r;
+    a.value       = value;
+    a.alarms      = getAlarmBits();
+    a.manual_left = getManualPortionsLeft();
+    s_lastAck = a;
+    memcpy(s_lastCmdMac, it.mac, 6);
+    s_haveLastCmd = true;
+    LOG_INFO("Panel command %s arg %u: %s (value %u)", cmdName(c.cmd), c.arg, ackResultString(r), value);
+    sendFrame(it.mac, FT_ACK, &a, sizeof(a));
+    s_dueMs = millis() | 1u;   // status with the new state and nonce right away
 }
 
 void initEspNowPanel() {
@@ -164,6 +325,8 @@ void initEspNowPanel() {
         return;
     }
     esp_now_register_send_cb(onSent);
+    s_rxQueue = xQueueCreate(RX_QUEUE_LEN, sizeof(RxItem));
+    esp_now_register_recv_cb(onRecv);
 
     esp_now_peer_info_t info = {};
     memcpy(info.peer_addr, BROADCAST, 6);
@@ -181,6 +344,8 @@ void initEspNowPanel() {
 
 void updateEspNowPanel() {
     if (!s_enabled) return;
+    RxItem it;
+    while (s_rxQueue && xQueueReceive(s_rxQueue, &it, 0) == pdTRUE) handleFrame(it);
     uint32_t now = millis();
 
     StatusBody b;
@@ -204,5 +369,5 @@ void updateEspNowPanel() {
 }
 
 EspNowPanelStats getEspNowPanelStats() {
-    return {s_enabled, s_txOk, s_txFail};
+    return {s_enabled, s_txOk, s_txFail, s_rxCmd, s_rxBad, s_rxReplay};
 }

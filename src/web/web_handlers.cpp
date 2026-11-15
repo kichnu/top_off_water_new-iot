@@ -21,6 +21,7 @@
 #include "../hardware/level_sensor.h"
 #include "../hardware/level_event_log.h"
 #include "../config/reservoir_config.h"
+#include "../core/node_commands.h"
 #include "../core/node_status.h"
 #include "../core/version.h"
 #include "../network/espnow_panel.h"
@@ -159,6 +160,9 @@ void handleStatus(AsyncWebServerRequest* request) {
         json["espnow_enabled"] = es.enabled;
         json["espnow_tx_ok"]   = es.txOk;
         json["espnow_tx_fail"] = es.txFail;
+        json["espnow_rx_cmd"]    = es.rxCmd;
+        json["espnow_rx_bad"]    = es.rxBad;
+        json["espnow_rx_replay"] = es.rxReplay;
     }
     
     // ============================================
@@ -318,26 +322,23 @@ void handleDirectPumpOn(AsyncWebServerRequest* request) {
         return;
     }
 
-    // Manual dosing is a deliberate on-site service action: Service Mode only,
-    // otherwise no checks (algorithm state, limits, reservoir level)
-    if (!isSystemDisabled()) {
+    // Manual dosing is a deliberate on-site service action: Service Mode only, not
+    // limited by the algorithm state or the daily limit; refused with the reservoir alarm.
+    // Each ON adds one portion to the manual queue (the panel sends n at once).
+    uint8_t accepted = 0;
+    topoff::AckResult res = cmdPortions(1, &accepted);
+    if (res == topoff::ACK_NOT_SERVICE || res == topoff::ACK_CALIBRATION) {
         request->send(409, "application/json",
-            "{\"success\":false,\"error\":\"Manual dosing only in Service Mode\"}");
+            res == topoff::ACK_NOT_SERVICE
+                ? "{\"success\":false,\"error\":\"Manual dosing only in Service Mode\"}"
+                : "{\"success\":false,\"error\":\"Calibration in progress\"}");
         return;
     }
-    if (isPumpCalibrationActive()) {
-        request->send(409, "application/json",
-            "{\"success\":false,\"error\":\"Calibration in progress\"}");
-        return;
-    }
-
-    // Each ON adds one portion to the manual queue
-    bool success = manualPortionAdd();
 
     JsonDocument json;
-    json["success"]      = success;
+    json["success"]      = res == topoff::ACK_OK;
     json["portions_left"] = getManualPortionsLeft();
-    if (!success) json["error"] = isDirectPumpMode() ? "Queue full" : "Pump busy";
+    if (res != topoff::ACK_OK) json["error"] = ackResultString(res);
 
     String response;
     serializeJson(json, response);
@@ -350,7 +351,7 @@ void handleDirectPumpOff(AsyncWebServerRequest* request) {
         return;
     }
 
-    manualPortionsStop();   // finishes the running portion, clears the queue
+    cmdPumpStop();   // finishes the running portion, clears the queue
 
     JsonDocument json;
     json["success"] = true;
@@ -434,15 +435,14 @@ void handleSystemToggle(AsyncWebServerRequest* request) {
             }
             target = (v == "1");
         }
-        bool changed = (target != enabledNow);
-        if (changed && isPumpCalibrationActive()) {
+        // Service Mode from the user (aquarium service) returns to Auto after 180 min;
+        // the same mode again keeps the running timer
+        bool changed = false;
+        if (cmdSetMode(target, &changed) == topoff::ACK_CALIBRATION) {
             request->send(409, "application/json",
                 "{\"success\":false,\"error\":\"Pump calibration in progress — Service Mode required\"}");
             return;
         }
-        // Service Mode from the user (aquarium service) returns to Auto after 180 min;
-        // the same mode again keeps the running timer
-        if (changed) setSystemState(target, SERVICE_MODE_MANUAL_MS);
 
         JsonDocument json;
         json["success"] = true;
@@ -586,24 +586,20 @@ void handleSetFillWaterMax(AsyncWebServerRequest* request) {
 
     int value = request->getParam("value", true)->value().toInt();
 
-    if (value < 100 || value > 10000) {
+    if (value < topoff::DAILY_LIMIT_MIN || value > topoff::DAILY_LIMIT_MAX) {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"Value must be 100-10000 ml\"}");
         return;
     }
-    // At least two doses a day — a smaller limit would stop every cycle
-    uint16_t dose = waterAlgorithm.getConfig().dose_ml;
-    if ((uint32_t)value < 2u * dose) {
+    uint16_t limit = 0;
+    if (cmdSetDailyLimit((uint16_t)value, &limit) != topoff::ACK_OK) {
+        // At least two doses a day — a smaller limit would stop every cycle
         JsonDocument err;
         err["success"] = false;
-        err["error"]   = String("Daily limit must be at least 2 \u00d7 Single Dose (") + (2u * dose) + " ml)";
+        err["error"]   = String("Daily limit must be at least 2 \u00d7 Single Dose (") + limit + " ml)";
         String resp; serializeJson(err, resp);
         request->send(400, "application/json", resp);
         return;
     }
-
-    TopOffConfig cfg = waterAlgorithm.getConfig();
-    cfg.daily_limit_ml = (uint16_t)value;
-    waterAlgorithm.setConfig(cfg);
 
     JsonDocument json;
     json["success"]        = true;
@@ -704,7 +700,7 @@ void handleSystemReset(AsyncWebServerRequest* request) {
         return;
     }
 
-    bool success = waterAlgorithm.resetSystem();
+    bool success = cmdErrorReset() == topoff::ACK_OK;
 
     JsonDocument json;
     json["success"] = success;

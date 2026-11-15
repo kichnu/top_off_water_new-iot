@@ -18,13 +18,16 @@ uint32_t getLastPumpRunMs();
 // Manual dosing in portions — a deliberate on-site service action: Service Mode
 // only (the switch to Auto stops it), otherwise never blocked (algorithm state,
 // daily limit, reservoir level) and not counted anywhere (24 h volume, history,
-// EMA); only the reserve tracking subtracts the water. Each ON adds one portion
-// (getPortionMs()) to the queue; portions are separated by a short pause. OFF
-// finishes the running portion and clears the queue.
+// EMA); only the reserve tracking subtracts the water. A command adds n portions
+// (getPortionMs() each) to the queue; portions are separated by a short pause.
+// OFF finishes the running portion and clears the queue. Preconditions (Service
+// Mode, calibration, reservoir) are checked by node_commands.
 #define MANUAL_PORTION_PAUSE_MS  5000
 #define MANUAL_QUEUE_MAX         20
 
-bool manualPortionAdd();          // false: algorithm/calibration pump running or queue full
+// Returns the number of portions queued (0..n): 0 when the algorithm/calibration
+// pump runs or outside Service Mode, fewer than n when the queue is full
+uint8_t manualPortionsAdd(uint8_t n);
 void manualPortionsStop();
 bool isDirectPumpMode();          // true for the whole manual session (portions + pauses)
 bool isManualPause();

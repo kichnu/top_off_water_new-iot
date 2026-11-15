@@ -80,14 +80,22 @@ code path in pump_controller; Service Mode only, ignores the ATO state and
 the daily limit).
 ```
 
+### Touch Panel (ESP-NOW)
+
+Link to the touch panel `home_display-iot` (protocol: `src/network/topoff_proto.h`, the same file in the panel; plan: `home_display-iot/docs/PLAN_DOLEWKA.md`). Frames are signed with HMAC-SHA256/16, key = SHA-256(`TOPOFF-ESPNOW-v1:` + Wi-Fi password).
+
+- `TO_STATUS` broadcast every 5 s and right after a change (status, mode, 24 h volume, reservoir, alarm bits, `cmd_nonce`).
+- `TO_CMD` → `TO_ACK` (unicast): `SET_MODE`, `PORTIONS(n)`, `PUMP_STOP`, `ERROR_RESET`, `SET_DAILY_LIMIT`. They run through `src/core/node_commands.*`, the same functions as the web handlers. A command must echo the current `cmd_nonce` (new one after every accepted command, otherwise `STALE_NONCE`); a repeated `cmd_id` gets the stored ACK without running again.
+- Counters in `/api/status`: `espnow_tx_ok`, `espnow_tx_fail`, `espnow_rx_cmd`, `espnow_rx_bad`, `espnow_rx_replay`.
+
 ### Manual Dosing in Portions
 
-System Control → **Pump ON** / **OFF** (`/api/pump/direct-on`, `/api/pump/direct-off`):
+System Control → **Pump ON** / **OFF** (`/api/pump/direct-on`, `/api/pump/direct-off`), or the touch panel (`PORTIONS(n)`, `PUMP_STOP` over ESP-NOW — see below):
 
-- Each ON press adds one portion to the queue (max `MANUAL_QUEUE_MAX` = 20); the first press starts pumping at once. A portion lasts the calibrated portion time (`getPortionMs()`).
+- Each ON press adds one portion to the queue (the panel adds 1–10 at once) (max `MANUAL_QUEUE_MAX` = 20); the first press starts pumping at once. A portion lasts the calibrated portion time (`getPortionMs()`).
 - Portions are separated by a fixed 5 s pause (`MANUAL_PORTION_PAUSE_MS`) — it only marks the portion-wise pumping.
 - OFF finishes the running portion and drops the rest of the queue; OFF during a pause ends the session at once. Emergency stop (`/api/pump/stop`) cuts the running portion immediately.
-- A deliberate on-site service action: **Service Mode only** (`direct-on` returns 409 in Auto Mode, the GUI button is disabled; switching to Auto stops the session at once). Otherwise never blocked — not by the ATO state (errors included), the daily limit or the reservoir level — and not counted anywhere (24 h volume, cycle history, EMA). Only the reserve tracking subtracts the pumped water.
+- A deliberate on-site service action: **Service Mode only** (`direct-on` returns 409 in Auto Mode, the GUI button is disabled; switching to Auto stops the session at once). Refused while the reservoir alarm (`LOW_RESERVOIR`) is latched; otherwise never blocked — not by the ATO state (errors included) or the daily limit — and not counted anywhere (24 h volume, cycle history, EMA). Only the reserve tracking subtracts the pumped water.
 - Start is blocked while a pump calibration is running. While a manual session is active (portions and pauses), the ATO cycle is deferred and the calibration cannot start.
 
 ### EMA / Alarm Score
@@ -189,7 +197,7 @@ All `/api/*` endpoints require session authentication (cookie `session_token`). 
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/pump/direct-on` | Manual dosing (Service Mode only, 409 otherwise): add one portion to the queue (starts at once when idle); returns `portions_left` |
+| POST | `/api/pump/direct-on` | Manual dosing (Service Mode only, 409 otherwise; refused with the reservoir alarm latched): add one portion to the queue (starts at once when idle); returns `portions_left` |
 | POST | `/api/pump/direct-off` | Manual dosing: finish the running portion, drop the queue |
 | POST | `/api/pump/calibration` | Guided portion calibration: `action=start&dose_ml=N`, `run`, `stop`, `confirm`, `cancel`; progress/result in `/api/status` (`cal_*`) |
 | POST | `/api/pump/stop` | Emergency stop |

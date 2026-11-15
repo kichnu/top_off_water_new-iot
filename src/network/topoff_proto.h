@@ -23,8 +23,40 @@ constexpr uint32_t STATUS_DEBOUNCE_MS = 300;    // change → status right away
 
 enum FrameType : uint8_t {
     FT_STATUS = 1,   // node → broadcast
-    FT_CMD    = 2,   // panel → node (stage D4)
-    FT_ACK    = 3,   // node → panel (stage D4)
+    FT_CMD    = 2,   // panel → node (unicast), CmdBody
+    FT_ACK    = 3,   // node → panel (unicast), AckBody
+};
+
+// Commands (stage D4). The panel repeats a command every CMD_RETRY_MS, at most CMD_RETRIES times, with
+// the same cmd_id; the node executes a cmd_id once and answers repeats with the stored ACK.
+// A command must echo the cmd_nonce of the last status / ACK; the node draws a new nonce after every
+// command it accepted (any result except STALE_NONCE), so a recorded frame is useless.
+constexpr uint32_t CMD_RETRY_MS = 250;
+constexpr uint8_t  CMD_RETRIES  = 8;
+
+enum CmdCode : uint8_t {
+    CMD_SET_MODE        = 1,   // arg: 1 = Auto, 0 = Service Mode (idempotent)
+    CMD_PORTIONS        = 2,   // arg: manual portions 1..PORTIONS_MAX (Service Mode only)
+    CMD_PUMP_STOP       = 3,   // finish the running manual portion, clear the queue
+    CMD_ERROR_RESET     = 4,   // = reset button held 3 s
+    CMD_SET_DAILY_LIMIT = 5,   // arg: ml, DAILY_LIMIT_MIN..MAX and >= 2 × dose
+};
+
+constexpr uint8_t  PORTIONS_MAX    = 10;
+constexpr uint16_t DAILY_LIMIT_MIN = 100;
+constexpr uint16_t DAILY_LIMIT_MAX = 10000;
+
+enum AckResult : uint8_t {
+    ACK_OK              = 0,
+    ACK_NOT_SERVICE     = 1,   // manual portions outside Service Mode
+    ACK_CALIBRATION     = 2,   // pump calibration running
+    ACK_PUMP_BUSY       = 3,   // automatic top-off pumping
+    ACK_QUEUE_FULL      = 4,   // value = portions accepted (may be 0)
+    ACK_RESET_BLOCKED   = 5,   // cycle being logged — try again
+    ACK_RESERVOIR_EMPTY = 6,   // LOW_RESERVOIR latched — no manual portions
+    ACK_STALE_NONCE     = 7,   // cmd_nonce does not match — nothing done
+    ACK_OUT_OF_RANGE    = 8,   // value = nearest allowed daily limit
+    ACK_BAD_CMD         = 9,   // unknown command / argument
 };
 
 enum NodeStatus : uint8_t { NS_OK = 0, NS_WARNING, NS_ALARM, NS_FAULT, NS_SERVICE };
@@ -64,7 +96,7 @@ struct StatusBody {
     char     fw[12];
     uint32_t ip;
     uint32_t utc;              // 0 = no valid time
-    uint32_t cmd_nonce;        // commands must echo it (stage D4); changes after each executed command
+    uint32_t cmd_nonce;        // commands must echo it; changes after each accepted command
     uint8_t  node_status;      // NodeStatus
     uint8_t  auto_mode;        // 1 = Auto, 0 = Service
     uint16_t service_left_min; // Service Mode: minutes to the auto return (0 = none)
@@ -88,10 +120,31 @@ struct StatusBody {
     uint8_t  res_alarm_cause;  // ReserveAlarmCause
     uint8_t  level_sensor;     // 0 absent, 1 OK, 2 fault
 };
+
+struct CmdBody {
+    uint32_t cmd_id;           // non-zero, new for every command (repeats keep it)
+    uint32_t cmd_nonce;        // from the last status / ACK
+    uint8_t  cmd;              // CmdCode
+    uint8_t  reserved;
+    uint16_t arg;
+};
+
+struct AckBody {
+    uint32_t cmd_id;
+    uint32_t cmd_nonce;        // current nonce after this command (next command may use it at once)
+    uint8_t  cmd;              // CmdCode
+    uint8_t  result;           // AckResult
+    uint16_t value;            // SET_MODE: mode; PORTIONS: accepted; SET_DAILY_LIMIT: limit now / allowed
+    uint16_t alarms;           // AL_* after the command (reset: what stays active)
+    uint8_t  manual_left;      // PORTIONS / PUMP_STOP: queue after the command
+    uint8_t  reserved;
+};
 #pragma pack(pop)
 
 static_assert(sizeof(FrameHdr) == 12, "FrameHdr size");
 static_assert(sizeof(StatusBody) == 86, "StatusBody size");
 static_assert(sizeof(FrameHdr) + sizeof(StatusBody) + TAG_LEN <= FRAME_MAX, "status frame too long");
+static_assert(sizeof(CmdBody) == 12, "CmdBody size");
+static_assert(sizeof(AckBody) == 16, "AckBody size");
 
 }  // namespace topoff

@@ -213,28 +213,31 @@ void stopPump() {
     }
 }
 
-bool manualPortionAdd() {
+uint8_t manualPortionsAdd(uint8_t n) {
+    if (n == 0) return 0;
     if (pumpRunning && !directPumpMode) {
-        LOG_WARNING("Manual portion blocked — algorithm/calibration pump is running");
-        return false;
+        LOG_WARNING("Manual portions blocked — algorithm/calibration pump is running");
+        return 0;
     }
     if (!isSystemDisabled()) {
-        LOG_WARNING("Manual portion blocked — Service Mode only");
-        return false;
+        LOG_WARNING("Manual portions blocked — Service Mode only");
+        return 0;
     }
+    uint8_t room = directPumpMode ? (uint8_t)(MANUAL_QUEUE_MAX - g_manualLeft) : MANUAL_QUEUE_MAX;
+    uint8_t add  = n < room ? n : room;
+    if (add == 0) return 0;
     if (!directPumpMode) {
         directPumpMode = true;
-        g_manualLeft   = 1;
+        g_manualLeft   = add;
         g_manualDone   = 0;
         g_manualPause  = false;
         g_sessionRunMs = 0;
         startManualPortion();
-        return true;
+    } else {
+        g_manualLeft += add;
+        LOG_INFO("Manual portions queued: +%u (%u left)", add, g_manualLeft);
     }
-    if (g_manualLeft >= MANUAL_QUEUE_MAX) return false;
-    g_manualLeft++;
-    LOG_INFO("Manual portion queued (%u left)", g_manualLeft);
-    return true;
+    return add;
 }
 
 void manualPortionsStop() {

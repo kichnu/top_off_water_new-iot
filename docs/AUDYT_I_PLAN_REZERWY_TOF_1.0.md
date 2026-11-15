@@ -256,3 +256,14 @@ Decyzja użytkownika 2026-10-31: dalszych zmian na razie nie wdrażamy — lista
 10. Raport zwrotny do `home_display-iot` (§7) — przekazany 2026-10-31; w panelu zostaje aktualizacja
     `docs/nodes/dolewka.md` według raportu.
 11. Po wdrożeniu panelu `home_display-iot`: usunąć dolewkę ręczną z GUI WWW (odp. 6.1).
+12. Potencjalny bug: OTA niedostępne, gdy Wi-Fi pojawi się dopiero po starcie (test 2026-11-15, FW 1.2.0).
+    Przebieg: sieć `KiG_2.4_IOT` wyłączona → restart dolewki → po kilku minutach sieć włączona → upload
+    OTA nie przechodzi; przechodzi dopiero po restarcie dolewki z siecią dostępną od startu. Kod
+    (`startOta()` w `src/main.cpp`, wywołanie z `loop()` przy `WiFi.status() == WL_CONNECTED`) wygląda
+    poprawnie — przyczyna nieustalona. Hipotezy: (A) węzeł w ogóle nie łączy się ponownie
+    (`updateWiFi()` co 30 s `WiFi.begin()`), (B) Wi-Fi wraca, ale ArduinoOTA nie odpowiada. Rozstrzygnięcie:
+    powtórzyć test z logiem przez USB (`pio device monitor`): `WiFi reconnecting...` w kółko → A,
+    `OTA ready` i nadal brak uploadu → B. Pomocniczo: czy panel dostaje wtedy `TO_STATUS` (wysyłany tylko
+    przy połączonym Wi-Fi). Niekrytyczne — obejście: restart dolewki.
+13. Do potwierdzenia: od D4 (FW 1.2.0) porcje ręczne są odrzucane przy zatrzaśniętym `LOW_RESERVOIR` —
+    także przycisk ON w web GUI (wcześniej nieblokowany; README zaktualizowane).

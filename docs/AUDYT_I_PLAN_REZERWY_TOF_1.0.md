@@ -255,7 +255,8 @@ Decyzja użytkownika 2026-10-31: dalszych zmian na razie nie wdrażamy — lista
 9. Dashboard VPS: pokazywać pole `alarm` / `alarm_text` z `/api/health`.
 10. Raport zwrotny do `home_display-iot` (§7) — przekazany 2026-10-31; w panelu zostaje aktualizacja
     `docs/nodes/dolewka.md` według raportu.
-11. Po wdrożeniu panelu `home_display-iot`: usunąć dolewkę ręczną z GUI WWW (odp. 6.1).
+11. Po wdrożeniu panelu `home_display-iot`: usunąć dolewkę ręczną z GUI WWW (odp. 6.1) — panel wdrożony (D5),
+    usunięcie wstrzymane 2026-11-15 (etap D6 panelu), do rozważenia w przyszłości.
 12. Potencjalny bug: OTA niedostępne, gdy Wi-Fi pojawi się dopiero po starcie (test 2026-11-15, FW 1.2.0).
     Przebieg: sieć `KiG_2.4_IOT` wyłączona → restart dolewki → po kilku minutach sieć włączona → upload
     OTA nie przechodzi; przechodzi dopiero po restarcie dolewki z siecią dostępną od startu. Kod
